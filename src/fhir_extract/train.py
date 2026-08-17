@@ -7,10 +7,12 @@ import yaml
 app = typer.Typer()
 
 
-def _format(row: dict) -> str:
+def _format(row: dict, tokenizer) -> str:
     from .baselines import EXTRACT_INSTRUCTION
     prompt = EXTRACT_INSTRUCTION.format(note=row["note"]).rstrip()
-    return f"{prompt}\n{json.dumps(row['label'])}"
+    # With packing=False, TRL adds BOS but not EOS; without an explicit stop
+    # signal, unconstrained generation would run to max_tokens.
+    return f"{prompt}\n{json.dumps(row['label'])}{tokenizer.eos_token}"
 
 
 @app.command()
@@ -18,21 +20,21 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
     import torch
     from datasets import Dataset
     from peft import LoraConfig
-    from transformers import AutoTokenizer, BitsAndBytesConfig
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     from trl import SFTConfig, SFTTrainer
 
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     proc = Path("data/processed")
 
-    def load(name: str) -> Dataset:
-        rows = [json.loads(l) for l in (proc / f"{name}.jsonl").open(encoding="utf-8")]
-        return Dataset.from_dict({"text": [_format(r) for r in rows]})
-
-    train_ds, val_ds = load("train"), load("val")
-
     tokenizer = AutoTokenizer.from_pretrained(cfg["model_id"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
+    def load(name: str) -> Dataset:
+        rows = [json.loads(l) for l in (proc / f"{name}.jsonl").open(encoding="utf-8")]
+        return Dataset.from_dict({"text": [_format(r, tokenizer) for r in rows]})
+
+    train_ds, val_ds = load("train"), load("val")
 
     q = cfg["quantization"]
     bnb = BitsAndBytesConfig(
@@ -49,14 +51,16 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
         save_total_limit=3, packing=False, **t,
     )
 
+    model = AutoModelForCausalLM.from_pretrained(
+        cfg["model_id"], quantization_config=bnb, device_map="auto")
+
     trainer = SFTTrainer(
-        model=cfg["model_id"],
+        model=model,
         args=args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
         peft_config=peft_cfg,
         processing_class=tokenizer,
-        model_init_kwargs={"quantization_config": bnb, "device_map": "auto"},
     )
 
     ckpts = sorted(Path(cfg["output_dir"]).glob("checkpoint-*")) if resume else []
