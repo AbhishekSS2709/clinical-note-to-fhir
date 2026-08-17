@@ -23,7 +23,8 @@ neither installed.
 | `model` | model id, **must match** an id returned by `GET <base_url>/models` | none — required, no fallback |
 | `base_url` | e.g. `http://localhost:8003/v1` | required for `openai` |
 | `api_key` | sent as the bearer token; vLLM ignores it but the client needs a non-empty string | `EMPTY` |
-| `structured_output_mode` | `guided_json` \| `json_schema` \| `none` | `guided_json` |
+| `structured_output_mode` | `guided_json` \| `json_schema` \| `none` | `json_schema` |
+| `enable_thinking` | disable Qwen3 hybrid-thinking mode via `chat_template_kwargs` | `false` |
 | `max_concurrency` | worker pool size for concurrent requests | `8` |
 | `timeout` | per-request timeout (seconds) | `120` |
 | `max_retries` | client-level retries before a request is given up on | `3` |
@@ -113,14 +114,14 @@ what was actually compared is never silently hidden.
 Servers differ in how they accept a JSON schema for constrained decoding,
 so it's configurable rather than hardcoded:
 
-- **`guided_json`** (default) — sends `extra_body={"guided_json": schema}`.
-  This is the long-standing vLLM OpenAI-server form; use it for a vLLM
+- **`guided_json`** — sends `extra_body={"guided_json": schema}`. This is
+  the long-standing vLLM OpenAI-server form; use it for a vLLM
   `--served-model-name` server without other constraints on the request body.
-- **`json_schema`** — sends `response_format={"type": "json_schema",
-  "json_schema": {"name": "clinical_record", "schema": schema}}`, the OpenAI
-  Chat Completions structured-output form. Use it against a server that
-  implements the OpenAI structured-output API rather than vLLM's
-  `guided_json` extension.
+- **`json_schema`** (default) — sends `response_format={"type":
+  "json_schema", "json_schema": {"name": "clinical_record", "schema":
+  schema}}`, the OpenAI Chat Completions structured-output form. Use it
+  against a server that implements the OpenAI structured-output API rather
+  than vLLM's `guided_json` extension.
 - **`none`** — sends no structured-output hint at all. Use it to measure the
   true unconstrained baseline (see the `constrained` flag on `LLMBaseline`),
   or against a server that supports neither of the above.
@@ -129,6 +130,44 @@ In all cases the schema itself always comes from
 `ClinicalRecord.model_json_schema()` — never a hand-written copy — so the
 constrained-decoding contract can't drift from the profile in
 `src/fhir_extract/profile.py`.
+
+**Verified server behaviour (2026-08-17, `Qwen/Qwen3-8B` on the vLLM
+OpenAI server at `http://10.24.6.107:8003/v1`, `max_model_len=40960`):**
+this build of vLLM does **not** enforce `guided_json` — a request sent with
+`structured_output_mode="guided_json"` came back as markdown-fenced
+` ```json ... ``` ` text that failed to parse. The same extraction prompt
+with `structured_output_mode="json_schema"` (`response_format`) came back
+as well-formed JSON matching the schema shape. That is why `json_schema` is
+now the default here and in `configs/data.yaml` / `configs/serve.yaml` —
+`guided_json` remains supported for servers that do honour it.
+
+As a safety net regardless of mode, completions are parsed tolerantly:
+`baselines.py`'s `parse_record()` (also used by `serve.py`) tries the raw
+text first, then retries with a leading ` ```json ` / ` ``` ` fence and
+trailing ` ``` ` stripped, before giving up. A fence-stripped parse still
+counts as `parsed=True`; only genuinely unparseable output counts as a
+parse failure.
+
+## Thinking mode (Qwen3 and other hybrid-thinking models)
+
+Qwen3 is a hybrid thinking model with thinking **on by default**. Verified
+against the live endpoint above: at `max_tokens=64` a trivial one-word
+prompt came back with `finish_reason='length'` and `content=None` — all 64
+tokens were consumed by reasoning tokens before any answer was emitted; at
+`max_tokens=1200` the same prompt burned 114 tokens on thinking before
+producing content. For extraction this is fatal (thinking exhausts the
+token budget and truncates the JSON output) and, at generation scale
+(~24,000 completions), wastes a large amount of compute.
+
+`OpenAIBackend` takes an `enable_thinking: bool` (config key
+`enable_thinking`, **default `False`**). When `False` (the default),
+every request merges `{"chat_template_kwargs": {"enable_thinking":
+False}}` into `extra_body`, composed with whatever `extra_body` the
+structured-output mode already needs (e.g. `guided_json`) so neither
+clobbers the other. When `True`, nothing extra is sent and the server's own
+default applies. Verified: with `enable_thinking=False` the same prompt
+returned `finish_reason='stop'` with content immediately, no reasoning
+tokens burned.
 
 Concurrency: `OpenAIBackend.complete()` issues requests through a bounded
 `ThreadPoolExecutor` (`max_concurrency` workers, default 8) so a 20k-prompt
