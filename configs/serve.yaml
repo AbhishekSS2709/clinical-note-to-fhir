@@ -1,9 +1,13 @@
+backend: vllm                  # openai | vllm
+
+# --- backend: openai ---  two model ids, one shared endpoint
+base_url: http://localhost:8003/v1
+api_key: EMPTY
+structured_output_mode: guided_json
+openai_tuned_model: fhir-tuned      # served via: vllm serve <base> --lora-modules fhir-tuned=outputs/adapters/qlora-8b
+openai_base_model: Qwen/Qwen3-8B    # must match an id from GET <base_url>/models
+
+# --- backend: vllm ---  two in-process engines
 tuned_model: outputs/merged/qlora-8b
 base_model: Qwen/Qwen3-8B
 gpu_memory_utilization: 0.45   # two engines share one GPU (vllm backend only)
-
-backend: vllm                  # openai | vllm
-base_url: http://localhost:8003/v1
-api_key: EMPTY
-model: Qwen/Qwen3-8B           # must match the id from GET <base_url>/models
-structured_output_mode: guided_json

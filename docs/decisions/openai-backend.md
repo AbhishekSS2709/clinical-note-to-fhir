@@ -15,7 +15,7 @@ neither installed.
 
 ## Config keys
 
-`configs/data.yaml` (`generation` block) and `configs/serve.yaml` both take:
+`configs/data.yaml` (`generation` block) takes:
 
 | key | meaning | default |
 |---|---|---|
@@ -28,10 +28,14 @@ neither installed.
 | `timeout` | per-request timeout (seconds) | `120` |
 | `max_retries` | client-level retries before a request is given up on | `3` |
 
-**The served model id has not been confirmed.** `configs/data.yaml` and
-`configs/serve.yaml` ship with `model: Qwen/Qwen3-8B` as a placeholder — this
-is a guess, not a verified value. `OpenAIBackend` raises immediately if
-`model` is missing from config, naming the config key and telling you to run
+`configs/serve.yaml` takes `backend`/`base_url`/`api_key`/`structured_output_mode`
+too, but no single `model` key — it needs two model identifiers (tuned and
+base), not one; see "Two models, one endpoint" below.
+
+**The served model id has not been confirmed.** `configs/data.yaml` ships
+with `model: Qwen/Qwen3-8B` as a placeholder — this is a guess, not a
+verified value. `OpenAIBackend` raises immediately if `model` is missing
+from config, naming the config key and telling you to run
 `curl <base_url>/models`. Do the same before a real job:
 
 ```
@@ -61,16 +65,48 @@ building an in-process vLLM backend when called with its original signature
 (unchanged, for `eval.py` and existing callers); pass `backend=build_backend(cfg)`
 explicitly to route a baseline through the HTTP endpoint instead.
 
-`configs/serve.yaml` takes the same `backend`/`base_url`/`api_key`/`model`/
-`structured_output_mode` keys. Caveat: the demo compares a *tuned* and a
-*base* model side by side, which needs two distinct model paths. The
-`openai` config block only names one `model`/`base_url`, so when
-`backend: openai`, `serve.py` routes **both** the tuned and base slots
-through that single endpoint/model — useful for proving the HTTP plumbing
-and UI work without a GPU, but it will not show a real tuned-vs-base
-comparison. Set `backend: vllm` (the default, using `tuned_model`/
-`base_model`) to get the real two-model comparison; that still requires a
-GPU.
+## Two models, one endpoint
+
+`configs/serve.yaml` is different: the demo compares a *tuned* and a *base*
+model side by side, so it needs two distinct model identifiers, not one.
+Over an OpenAI-compatible endpoint that means two **model ids** against one
+shared server, not two engines:
+
+| key | meaning |
+|---|---|
+| `base_url` | shared endpoint for both models (`backend: openai`) |
+| `openai_tuned_model` | model id for the fine-tuned side |
+| `openai_base_model` | model id for the untouched-base side, must match an id from `GET <base_url>/models` |
+| `tuned_model` | local model path for the fine-tuned side (`backend: vllm`) |
+| `base_model` | local model path for the base side (`backend: vllm`) |
+
+vLLM's OpenAI server can expose a LoRA adapter as its own model id via
+`--lora-modules`, which is how one server serves both identities:
+
+```
+vllm serve Qwen/Qwen3-8B --port 8003 \
+    --lora-modules fhir-tuned=outputs/adapters/qlora-8b
+```
+
+That serves the base weights under their own id (`Qwen/Qwen3-8B`) and the
+adapter under `fhir-tuned`, both reachable at the same `base_url`. Set
+`openai_tuned_model: fhir-tuned` and `openai_base_model: Qwen/Qwen3-8B` to
+match. `serve.py` builds one `OpenAIBackend` per resolved model id (cached),
+both pointed at the same `base_url`.
+
+`backend: vllm` (the default) uses `tuned_model`/`base_model` and still
+runs two in-process engines on a GPU, unchanged from before.
+
+**Guard against configuring both slots to the same model.** If the resolved
+tuned and base identifiers are equal — e.g. `openai_tuned_model` and
+`openai_base_model` both left at the same placeholder, or no LoRA adapter
+has been registered yet — `serve.py` logs a prominent warning at startup
+naming the two config keys involved, because the comparison is then
+meaningless (both panes render identical output). It does not raise; this
+is a legitimate way to smoke-test the HTTP plumbing before a fine-tune
+exists. The resolved ids are also returned in the `/extract` response
+(`models: {tuned, base}`) and shown in the UI under each pane's heading, so
+what was actually compared is never silently hidden.
 
 ## Structured output modes
 

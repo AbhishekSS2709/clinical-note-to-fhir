@@ -16,6 +16,7 @@
   .tuned{border-color:#2f855a}.base{border-color:#c05621}
   pre{font-size:12px;white-space:pre-wrap;margin:0}
   .ms{color:#666;font-size:12px}
+  .model-id{color:#888;font-size:11px;font-family:ui-monospace,monospace;margin:0 0 .5rem}
   @media(max-width:800px){.cols{grid-template-columns:1fr}}
 </style>
 </head>
@@ -27,8 +28,8 @@ extract from it, side by side.</p>
 Continue metformin 500mg BID and lisinopril 10mg daily. NKDA. Appendectomy 2011.</textarea>
 <button onclick="run()">Extract</button>
 <div class="cols">
-  <div class="col tuned"><h3>Fine-tuned</h3><div class="ms" id="tms"></div><pre id="tuned"></pre></div>
-  <div class="col base"><h3>Base (no fine-tune)</h3><div class="ms" id="bms"></div><pre id="base"></pre></div>
+  <div class="col tuned"><h3>Fine-tuned</h3><div class="model-id" id="tmodel"></div><div class="ms" id="tms"></div><pre id="tuned"></pre></div>
+  <div class="col base"><h3>Base (no fine-tune)</h3><div class="model-id" id="bmodel"></div><div class="ms" id="bms"></div><pre id="base"></pre></div>
 </div>
 <script>
 async function run(){
@@ -42,6 +43,8 @@ async function run(){
   document.getElementById('base').textContent=JSON.stringify(d.base,null,2);
   document.getElementById('tms').textContent=d.latency_ms.tuned+' ms';
   document.getElementById('bms').textContent=d.latency_ms.base+' ms';
+  document.getElementById('tmodel').textContent=d.models.tuned;
+  document.getElementById('bmodel').textContent=d.models.base;
 }
 </script>
 </body>
