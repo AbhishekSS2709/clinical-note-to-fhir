@@ -33,7 +33,10 @@ def normalise(text: str) -> str:
 def _text_anchored(term: str, note_norm: str) -> bool:
     term_norm = normalise(term).strip()
     if not term_norm:
-        return True
+        # An empty or whitespace-only term is unverifiable, not verified.
+        # Fail closed: an unanchorable fact must be reported as unanchored,
+        # not silently counted as anchored.
+        return False
     # Head word of a multi-word clinical term carries most of the signal.
     if term_norm in note_norm:
         return True

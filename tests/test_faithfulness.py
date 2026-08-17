@@ -35,3 +35,12 @@ def test_is_faithful_wraps_the_check():
                                                clinical_status="active")])
     assert is_faithful("Known asthma.", rec) is True
     assert is_faithful("No complaints.", rec) is False
+
+def test_empty_term_is_not_anchored():
+    """Fail closed: an unverifiable fact must never count as verified."""
+    rec = ClinicalRecord(conditions=[Condition(code_text="", clinical_status="active")])
+    assert unanchored_facts("Patient is well.", rec) != []
+
+def test_whitespace_term_is_not_anchored():
+    rec = ClinicalRecord(conditions=[Condition(code_text="   ", clinical_status="active")])
+    assert unanchored_facts("Patient is well.", rec) != []
