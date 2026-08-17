@@ -18,112 +18,70 @@ app = typer.Typer()
 # rather than on chat-template {% generation %} markers.
 _ASSISTANT_RESPONSE_TEMPLATE = "<|im_start|>assistant\n"
 
-_ASSISTANT_BRANCH_RE = re.compile(
-    r"\{%-?\s*(?:if|elif)\s+message(?:\[['\"]role['\"]\]|\.role)"
-    r"\s*==\s*['\"]assistant['\"]\s*-?%\}"
-)
-_JINJA_TAG_RE = re.compile(r"\{%-?\s*(\w+)")
+GEN_RE = re.compile(r"\{%-?\s*generation\s*-?%\}")
+
+# --- anchor 1: the assistant body, which currently emits its own header ----------
+_BODY_OLD = """        {%- if loop.index0 > ns.last_query_index %}
+            {%- if loop.last or (not loop.last and reasoning_content) %}
+                {{- '<|im_start|>' + message.role + '\\n<think>\\n' + reasoning_content.strip('\\n') + '\\n</think>\\n\\n' + content.lstrip('\\n') }}
+            {%- else %}
+                {{- '<|im_start|>' + message.role + '\\n' + content }}
+            {%- endif %}
+        {%- else %}
+            {{- '<|im_start|>' + message.role + '\\n' + content }}
+        {%- endif %}"""
+
+# header emitted OUTSIDE the span (it is prompt, not target); body INSIDE it
+_BODY_NEW = """        {{- '<|im_start|>' + message.role + '\\n' }}
+        {%- generation -%}
+        {%- if loop.index0 > ns.last_query_index %}
+            {%- if loop.last or (not loop.last and reasoning_content) %}
+                {{- '<think>\\n' + reasoning_content.strip('\\n') + '\\n</think>\\n\\n' + content.lstrip('\\n') }}
+            {%- else %}
+                {{- content }}
+            {%- endif %}
+        {%- else %}
+            {{- content }}
+        {%- endif %}"""
+
+# --- anchor 2: close the span after <|im_end|> so the stop token is supervised ---
+_END_OLD = """        {{- '<|im_end|>\\n' }}
+    {%- elif message.role == "tool" %}"""
+
+_END_NEW = """        {{- '<|im_end|>\\n' }}
+        {%- endgeneration -%}
+    {%- elif message.role == "tool" %}"""
 
 
-def ensure_generation_markers(tokenizer) -> bool:
-    """SUPERSEDED -- replace with the server-verified implementation.
+def ensure_generation_markers(tokenizer):
+    """Add {% generation %} markers to a Qwen3-style chat template, in place."""
+    tpl = tokenizer.chat_template
+    if tpl is None:
+        raise ValueError("tokenizer has no chat_template")
 
-    This version was written OFFLINE against a guessed ChatML-shaped
-    template and is known to be WRONG for Qwen3: it wraps the assistant
-    if/elif *branch body*, but in Qwen3's real template that body emits
-    the ``<|im_start|>assistant
-`` header itself (in three branches), so
-    the header lands INSIDE the supervised span. The header is prompt, not
-    completion, and must be hoisted out first.
+    # NOTE: must use the regex, NOT `"generation" in tpl` -- the latter is always
+    # True because of `add_generation_prompt`, which would make this a silent no-op
+    # and leave the assistant mask all zeros.
+    if GEN_RE.search(tpl):
+        return tokenizer  # already patched; idempotent
 
-    A corrected, byte-identical-verified implementation lives on the GPU
-    server at::
-
-        /mnt/e_disk/wcte/abhishek/qwen3_8b/handoff/ensure_generation_markers.py
-
-    Swap that in before training. It also gates its early-exit on a regex
-    rather than a literal ``"{% generation %}"`` substring -- necessary
-    because the patched markers use Jinja whitespace control
-    (``{%- generation -%}``), which the substring check below would miss,
-    breaking idempotency.
-
-    Ensure `tokenizer.chat_template` wraps the assistant turn in
-    `{% generation %}` / `{% endgeneration %}` markers.
-
-    TRL's completion-only / assistant-only loss masking locates the
-    response span by looking for these markers when it renders the chat
-    template with `return_assistant_tokens_mask=True`. Qwen3's stock
-    template does not contain them, so masking silently does nothing (or
-    errors) unless this is patched first.
-
-    Returns True once the template is confirmed to contain the markers
-    (whether they were already present or were just inserted). Never
-    returns without patching -- if the assistant branch can't be
-    confidently located, this raises instead of silently no-opping, since
-    a silent no-op here would reproduce the exact bug it exists to close.
-    """
-    template = getattr(tokenizer, "chat_template", None)
-    if template is None:
+    if tpl.count(_BODY_OLD) != 1:
         raise ValueError(
-            "tokenizer.chat_template is None -- cannot insert {% generation %} "
-            "markers, so completion-only loss masking cannot be verified. "
-            "Set an explicit chat template on the tokenizer before training."
+            "assistant body anchor not found exactly once "
+            f"(found {tpl.count(_BODY_OLD)}); template shape changed, refusing to guess"
+        )
+    if tpl.count(_END_OLD) != 1:
+        raise ValueError(
+            "assistant <|im_end|> anchor not found exactly once "
+            f"(found {tpl.count(_END_OLD)}); template shape changed, refusing to guess"
         )
 
-    if "{% generation %}" in template:
-        return True
+    tpl = tpl.replace(_BODY_OLD, _BODY_NEW).replace(_END_OLD, _END_NEW)
 
-    match = _ASSISTANT_BRANCH_RE.search(template)
-    if not match:
-        raise ValueError(
-            "Could not find an assistant-role branch (a "
-            "`{% if/elif message['role'] == 'assistant' %}` tag) in "
-            "tokenizer.chat_template, so {% generation %} markers cannot be "
-            "inserted and completion-only loss masking cannot be verified. "
-            "Patch the chat template manually before training."
-        )
-
-    # Walk forward from the opening tag, tracking if/for nesting depth, to
-    # find where this assistant branch ends (its elif/else/endif at the
-    # same depth -- not one belonging to a nested if/for inside it).
-    depth = 0
-    end_of_branch = None
-    for tag in _JINJA_TAG_RE.finditer(template, match.end()):
-        keyword = tag.group(1)
-        if keyword in ("if", "for"):
-            depth += 1
-        elif keyword in ("endif", "endfor"):
-            if depth == 0:
-                end_of_branch = tag.start()
-                break
-            depth -= 1
-        elif keyword in ("elif", "else") and depth == 0:
-            end_of_branch = tag.start()
-            break
-
-    if end_of_branch is None:
-        raise ValueError(
-            "Found an assistant-role branch in tokenizer.chat_template but "
-            "could not find its closing elif/else/endif tag, so "
-            "{% generation %} markers cannot be safely inserted. Patch the "
-            "chat template manually before training."
-        )
-
-    body = template[match.end():end_of_branch]
-    if not body.strip():
-        raise ValueError(
-            "The assistant-role branch in tokenizer.chat_template appears "
-            "empty, so {% generation %} markers cannot be inserted "
-            "confidently. Patch the chat template manually before training."
-        )
-
-    patched = (
-        template[:match.end()]
-        + "{% generation %}" + body + "{% endgeneration %}"
-        + template[end_of_branch:]
-    )
-    tokenizer.chat_template = patched
-    return True
+    if not GEN_RE.search(tpl):
+        raise AssertionError("markers not inserted")
+    tokenizer.chat_template = tpl
+    return tokenizer
 
 
 def _first_supported_kwarg(target, candidates: list[str]) -> str:

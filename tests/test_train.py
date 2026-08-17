@@ -33,21 +33,49 @@ _QWEN3_STYLE_TEMPLATE = (
 
 
 def test_ensure_generation_markers_noop_when_already_present():
+    """Idempotent: a second call must not double-wrap."""
     template = "{% generation %}assistant body{% endgeneration %}"
     tok = _StubTokenizer(template)
-    assert ensure_generation_markers(tok) is True
+    ensure_generation_markers(tok)
     assert tok.chat_template == template  # left untouched
+    assert tok.chat_template.count("{% generation %}") == 1
 
 
-def test_ensure_generation_markers_inserts_markers_into_qwen3_style_template():
+def test_ensure_generation_markers_detects_whitespace_control_form():
+    """The real patched template uses {%- generation -%}, not {% generation %}.
+
+    A literal-substring early-exit would miss it and re-patch an already
+    patched template. The implementation must gate on a regex.
+    """
+    template = "{%- generation -%}assistant body{%- endgeneration -%}"
+    tok = _StubTokenizer(template)
+    ensure_generation_markers(tok)
+    assert tok.chat_template == template  # recognised as already patched
+
+
+def test_ensure_generation_markers_does_not_gate_on_bare_word():
+    """'generation' appears in every template via add_generation_prompt.
+
+    Gating on that substring would make this a silent no-op and leave the
+    assistant mask all zeros -- the exact bug this function exists to close.
+    """
+    template = "{%- if add_generation_prompt %}{{- 'x' }}{%- endif %}"
+    tok = _StubTokenizer(template)
+    with pytest.raises(ValueError):
+        ensure_generation_markers(tok)
+
+
+def test_ensure_generation_markers_refuses_unknown_template_shape():
+    """Anchors must match exactly once; otherwise refuse rather than guess.
+
+    Verified on the real Qwen3 template: the previous generic-scanner
+    implementation returned OK while wrapping the <|im_start|>assistant
+    header INSIDE the span -- a silent wrong span that trains the model on
+    its own turn header. Refusing beats guessing.
+    """
     tok = _StubTokenizer(_QWEN3_STYLE_TEMPLATE)
-    assert ensure_generation_markers(tok) is True
-    assert "{% generation %}" in tok.chat_template
-    assert "{% endgeneration %}" in tok.chat_template
-    # The wrapped body still contains the assistant content expression.
-    start = tok.chat_template.index("{% generation %}")
-    end = tok.chat_template.index("{% endgeneration %}")
-    assert "assistant" in tok.chat_template[start:end]
+    with pytest.raises(ValueError, match="anchor not found"):
+        ensure_generation_markers(tok)
 
 
 def test_ensure_generation_markers_raises_when_assistant_body_not_found():
