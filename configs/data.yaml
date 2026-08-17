@@ -1,0 +1,18 @@
+seed: 42
+synthea:
+  population: 3000
+  output_dir: data/raw/synthea
+generation:
+  model: Qwen/Qwen3-14B-Instruct-AWQ
+  temperature: 0.9
+  top_p: 0.95
+  max_tokens: 1024
+  target_pairs: 24000        # over-generate ~3x; filter down to ~8000
+  batch_size: 64
+splits:
+  train: 8000
+  val: 500
+  test_synthetic: 500
+paths:
+  interim: data/interim
+  processed: data/processed

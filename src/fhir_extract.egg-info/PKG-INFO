@@ -1,0 +1,27 @@
+Metadata-Version: 2.4
+Name: fhir-extract
+Version: 0.1.0
+Requires-Python: >=3.11
+Requires-Dist: pydantic>=2.7
+Requires-Dist: fhir.resources>=7.1.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rapidfuzz>=3.9
+Requires-Dist: orjson>=3.10
+Requires-Dist: typer>=0.12
+Provides-Extra: gpu
+Requires-Dist: torch>=2.4; extra == "gpu"
+Requires-Dist: transformers>=4.44; extra == "gpu"
+Requires-Dist: peft>=0.12; extra == "gpu"
+Requires-Dist: trl>=0.10; extra == "gpu"
+Requires-Dist: bitsandbytes>=0.43; extra == "gpu"
+Requires-Dist: accelerate>=0.33; extra == "gpu"
+Requires-Dist: datasets>=2.20; extra == "gpu"
+Requires-Dist: vllm>=0.6; extra == "gpu"
+Requires-Dist: wandb>=0.17; extra == "gpu"
+Provides-Extra: serve
+Requires-Dist: fastapi>=0.112; extra == "serve"
+Requires-Dist: uvicorn>=0.30; extra == "serve"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
+Requires-Dist: ruff>=0.6; extra == "dev"
