@@ -69,3 +69,14 @@ def test_small_records_pass_through_intact():
                                                  clinical_status="active")])
     sub = select_subset(_enc(small), random.Random(0))
     assert len(sub.conditions) == 1
+
+
+def test_allergy_only_record_is_never_empty():
+    """An encounter whose only fact is an allergy must not be dropped when
+    the allergy-mention roll fails; the fallback must reach allergies too."""
+    allergy_only = ClinicalRecord(allergies=[AllergyIntolerance(substance_text="penicillin")])
+    for seed in range(100):
+        sub = select_subset(_enc(allergy_only), random.Random(seed))
+        total = (len(sub.conditions) + len(sub.medications) + len(sub.allergies)
+                 + len(sub.vitals) + len(sub.procedures))
+        assert total > 0

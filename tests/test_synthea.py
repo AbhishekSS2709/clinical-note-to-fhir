@@ -3,6 +3,7 @@ from pathlib import Path
 from fhir_extract.synthea import parse_bundle, EncounterRecord
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bundle_sample.json"
+BP_COMPONENT_FIXTURE = Path(__file__).parent / "fixtures" / "bundle_bp_component.json"
 
 
 def test_parse_bundle_returns_encounters():
@@ -62,3 +63,14 @@ def test_observation_with_multiple_vital_codings_yields_at_most_one_vital():
     encounters = parse_bundle(bundle)
     assert len(encounters) == 1
     assert len(encounters[0].record.vitals) == 1
+
+
+def test_blood_pressure_panel_yields_both_components():
+    """Real Synthea exports BP as one Observation (85354-9, not itself in
+    VITAL_LOINC) with no top-level valueQuantity, carrying systolic (8480-6)
+    and diastolic (8462-4) inside component[]. Both must be extracted."""
+    bundle = json.loads(BP_COMPONENT_FIXTURE.read_text(encoding="utf-8"))
+    encounters = parse_bundle(bundle)
+    assert len(encounters) == 1
+    vitals = {v.loinc_code: v.value for v in encounters[0].record.vitals}
+    assert vitals == {"8480-6": 132.0, "8462-4": 84.0}

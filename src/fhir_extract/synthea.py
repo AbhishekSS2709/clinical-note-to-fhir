@@ -100,7 +100,27 @@ def parse_bundle(bundle: dict) -> list[EncounterRecord]:
 
     for o in _entries(bundle, "Observation"):
         rec = bucket(_ref_id(o.get("encounter")))
-        if rec is None or "valueQuantity" not in o:
+        if rec is None:
+            continue
+        if o.get("component"):
+            # Panel observations (e.g. blood pressure 85354-9) carry each
+            # vital inside component[] rather than a top-level valueQuantity.
+            for comp in o["component"]:
+                if "valueQuantity" not in comp:
+                    continue
+                for coding in comp.get("code", {}).get("coding", []):
+                    key = _LOINC_TO_KEY.get(coding.get("code", ""))
+                    if key is None:
+                        continue
+                    rec.vitals.append(VitalObservation(
+                        loinc_code=coding["code"],
+                        display=VITAL_LOINC[key][1],
+                        value=float(comp["valueQuantity"]["value"]),
+                        unit=comp["valueQuantity"].get("unit", ""),
+                    ))
+                    break  # Ruling G: at most one vital per coding.
+            continue
+        if "valueQuantity" not in o:
             continue
         for coding in o.get("code", {}).get("coding", []):
             key = _LOINC_TO_KEY.get(coding.get("code", ""))

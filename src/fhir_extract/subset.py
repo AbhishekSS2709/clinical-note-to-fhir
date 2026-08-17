@@ -39,11 +39,14 @@ def select_subset(enc: EncounterRecord, rng: random.Random) -> ClinicalRecord:
     )
     if not any([sub.conditions, sub.medications, sub.allergies,
                 sub.vitals, sub.procedures]):
-        # Never emit an empty label; fall back to one condition or one vital.
+        # Never emit an empty label; fall back to one condition, else vitals,
+        # else one medication, else one allergy.
         if src.conditions:
             sub.conditions = [src.conditions[0]]
         elif src.vitals:
             sub.vitals = list(src.vitals)
         elif src.medications:
             sub.medications = [src.medications[0]]
+        elif src.allergies:
+            sub.allergies = [src.allergies[0]]
     return sub
