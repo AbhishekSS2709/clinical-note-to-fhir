@@ -31,10 +31,14 @@ end-to-end, not just this batch's four tasks.
    ```
 4. **[Task 11 Step 1]** `nvidia-smi --query-gpu=name,memory.total --format=csv`; adjust
    `configs/train_qlora_8b.yaml` if the card is not ~24GB.
-5. **[Task 11 Step 4]** Decode one training batch's labels
-   (`tokenizer.decode([t for t in labels if t != -100])`) and confirm only the JSON
-   answer is visible, not the note — fix the loss-masking mechanism before spending GPU
-   hours if the note appears.
+5. **[Task 11 Step 4]** No manual check needed: `train.py` now decodes one training
+   batch's labels itself (`_verify_masking`, gated by `verify_masking: true` in
+   `configs/train_qlora_8b.yaml`) and raises before training starts if the instruction
+   text is visible in the unmasked labels instead of only the JSON answer. Training will
+   fail loudly if masking is wrong — just confirm `make train` gets past this assertion
+   (watch for the `[verify_masking]` log line) rather than checking by hand. This is the
+   first time this assertion runs against a real model/tokenizer; see
+   `docs/decisions/deferred-findings.md`.
 6. **[Task 11 Step 5]** Smoke-train on a 100-row slice of `train.jsonl`, 1 epoch, via
    `make train`. Confirm it completes without OOM and a checkpoint appears under
    `outputs/adapters/qlora-8b/`.

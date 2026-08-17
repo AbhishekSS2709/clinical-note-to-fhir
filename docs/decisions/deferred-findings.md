@@ -27,12 +27,23 @@ Fix these before publishing any number, not before running the pipeline.
 | M5 | `train.py` sets `report_to="wandb"` unconditionally — a headless run hangs at step 0 without `WANDB_API_KEY`. | Make it configurable. |
 | M6 | `baselines.py` temperature regex matches a bare `T` before digits in unrelated text; units are hard-coded (F/kg/cm) regardless of what the note says. | Tighten the pattern; read units from the match. |
 
+## Resolved
+
+- **Completion-only loss masking is now implemented and self-verifying.**
+  `train.py` builds conversational (`messages`) examples, patches the tokenizer's chat
+  template with `{% generation %}` / `{% endgeneration %}` markers via
+  `ensure_generation_markers` when they're missing (Qwen3's stock template lacks them),
+  and enables TRL's `assistant_only_loss` / `completion_only_loss` (or, on the oldest TRL
+  API, `DataCollatorForCompletionOnlyLM`) via `_configure_completion_only_loss`. A hard
+  runtime assertion (`_verify_masking`, gated by the `verify_masking: true` config flag)
+  decodes one training batch's labels and raises before training starts if the instruction
+  text is visible in the unmasked portion. **This assertion has still never executed on a
+  GPU** — it was written from the documented TRL API shape (no GPU/torch/trl available in
+  this environment) and remains unconfirmed against a real model/tokenizer until Task 11
+  Step 4 runs on the server; see `docs/SERVER-RUN-CHECKLIST.md`.
+
 ## Known-unconfirmed
 
-- **Completion-only loss masking is NOT wired up.** `train.py`'s `_format` trains on the
-  instruction text as well as the answer. The plan calls this the highest-value detail and
-  Task 11 Step 4 exists to verify it — but that step is hardware-blocked, so this is
-  *unconfirmed rather than merely unrun*. Resolve it before spending GPU hours.
 - **The Synthea parser has still only been validated against hand-authored fixtures.**
   The BP `component[]` fix (C6) was written from the documented real shape, not from
   genuine output. Step 1 of `docs/SERVER-RUN-CHECKLIST.md` remains mandatory.

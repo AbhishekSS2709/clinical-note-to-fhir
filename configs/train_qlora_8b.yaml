@@ -6,6 +6,10 @@
 model_id: Qwen/Qwen3-8B
 output_dir: outputs/adapters/qlora-8b
 seed: 42
+# Decode one training batch's labels and assert the instruction is masked
+# (-100) while the JSON answer is not, before training starts. See
+# train._verify_masking. Disable only if this ever misfires.
+verify_masking: true
 quantization:
   load_in_4bit: true
   bnb_4bit_quant_type: nf4
