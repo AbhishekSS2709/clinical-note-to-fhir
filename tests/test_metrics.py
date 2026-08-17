@@ -1,4 +1,4 @@
-from fhir_extract.profile import ClinicalRecord, Condition, MedicationStatement
+from fhir_extract.profile import ClinicalRecord, Condition, MedicationStatement, Procedure
 from fhir_extract.metrics import score, aggregate
 
 def _rec(*conditions):
@@ -38,3 +38,35 @@ def test_aggregate_computes_micro_f1():
     agg = aggregate(rows)
     assert 0.0 < agg["micro_f1"] < 1.0
     assert agg["schema_validity"] == 1.0
+
+def test_digit_discriminator_blocks_false_match():
+    """'Type 1' vs 'Type 2' diabetes scores 93.3 fuzzy - must NOT be a true positive."""
+    gold = ClinicalRecord(conditions=[Condition(code_text="Type 2 diabetes mellitus",
+                                                clinical_status="active")])
+    pred = ClinicalRecord(conditions=[Condition(code_text="Type 1 diabetes mellitus",
+                                                clinical_status="active")])
+    s = score(pred, gold, "Type 1 diabetes mellitus")
+    assert s["tp"] == 0 and s["fp"] == 1 and s["fn"] == 1
+
+def test_laterality_discriminator_blocks_false_match():
+    gold = ClinicalRecord(procedures=[Procedure(code_text="left knee replacement")])
+    pred = ClinicalRecord(procedures=[Procedure(code_text="right knee replacement")])
+    s = score(pred, gold, "right knee replacement")
+    assert s["tp"] == 0
+
+def test_macro_f1_ignores_absent_resource_types():
+    """A perfect prediction must score macro_f1 == 1.0 even when 4 of 5 types are empty."""
+    rec = ClinicalRecord(conditions=[Condition(code_text="Asthma", clinical_status="active")])
+    agg = aggregate([score(rec, rec, "Asthma")])
+    assert agg["macro_f1"] == 1.0
+
+def test_best_match_not_first_match():
+    """A mediocre earlier candidate must not consume a gold that matches a later pred better."""
+    gold = ClinicalRecord(conditions=[
+        Condition(code_text="Asthma", clinical_status="active"),
+        Condition(code_text="Asthma exacerbation", clinical_status="active")])
+    pred = ClinicalRecord(conditions=[
+        Condition(code_text="Asthma exacerbation", clinical_status="active"),
+        Condition(code_text="Asthma", clinical_status="active")])
+    s = score(pred, gold, "Asthma exacerbation and Asthma")
+    assert s["tp"] == 2, "both should match their exact counterparts"
