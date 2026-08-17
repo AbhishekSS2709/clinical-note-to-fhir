@@ -56,6 +56,19 @@ def test_medication_statement_uses_r4b_not_r5():
     assert validate_as_fhir(rec) == []
 
 
+def test_loinc_code_schema_enum_covers_exactly_the_eight_vital_codes():
+    """A Literal type (not a free string) is what lets constrained decoding
+    structurally rule out an invalid LOINC code; this is what makes
+    schema_validity a meaningful metric."""
+    schema = ClinicalRecord.model_json_schema()
+    vitals_ref = schema["properties"]["vitals"]["items"]["$ref"]
+    def_name = vitals_ref.rsplit("/", 1)[-1]
+    loinc_schema = schema["$defs"][def_name]["properties"]["loinc_code"]
+    expected = {code for code, _ in VITAL_LOINC.values()}
+    assert set(loinc_schema["enum"]) == expected
+    assert len(expected) == 8
+
+
 def test_clinical_statuses_constant_matches_literal():
     """CLINICAL_STATUSES must mirror the ClinicalStatus Literal exactly (Ruling E)."""
     assert CLINICAL_STATUSES == frozenset({

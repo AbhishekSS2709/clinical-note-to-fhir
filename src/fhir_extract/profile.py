@@ -19,6 +19,9 @@ VITAL_LOINC: dict[str, tuple[str, str]] = {
     "height":       ("8302-2",  "Body height"),
 }
 _VALID_LOINC = {code for code, _ in VITAL_LOINC.values()}
+# Derived from VITAL_LOINC so constrained decoding structurally cannot emit a
+# code outside the eight this profile supports; the two cannot drift apart.
+VitalLoincCode = Literal[tuple(sorted(_VALID_LOINC))]
 
 ClinicalStatus = Literal[
     "active", "recurrence", "relapse", "inactive", "remission", "resolved"
@@ -65,7 +68,7 @@ class AllergyIntolerance(BaseModel):
 
 
 class VitalObservation(BaseModel):
-    loinc_code: str
+    loinc_code: VitalLoincCode
     display: str
     value: float
     unit: str
