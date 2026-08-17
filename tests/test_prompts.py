@@ -34,6 +34,16 @@ def test_variants_differ_across_seeds():
     assert len(metas) > 5, "prompt matrix must actually vary"
 
 
+def test_prompt_forbids_restating_field_names():
+    prompt, _ = build_prompt(_enc(), ClinicalRecord(), random.Random(0))
+    assert "condition is active" in prompt.lower()  # the forbidden example itself
+    assert "never state field names or metadata verbatim" in prompt.lower()
+
+def test_prompt_requires_stripping_semantic_tag_when_mentioning_terms():
+    prompt, _ = build_prompt(_enc(), ClinicalRecord(), random.Random(0))
+    assert "(disorder)" in prompt.lower()  # cited as the example to strip
+
+
 def test_encounter_rng_is_order_independent():
     """A resumed run must reproduce a fresh run: same seed + id -> same stream."""
     from fhir_extract.generate import _encounter_rng

@@ -36,6 +36,12 @@ Rules:
 - Do NOT invent any additional diagnoses, medications, allergies, vital
   measurements, or procedures beyond those listed. Filler such as chief
   complaint narrative, exam prose, and disposition is encouraged.
+- Write like a clinician documenting a patient, not like a system summarising
+  a record. Never state field names or metadata verbatim -- no "condition is active",
+  no "onset <date>". Work dates into the prose naturally ("since 2019",
+  "diagnosed three years ago") or leave them out.
+- When mentioning a condition or procedure, drop any parenthetical SNOMED
+  tag -- write "chronic sinusitis", never "chronic sinusitis (disorder)".
 - Write it as a {doc_type}, {style}, {noise}.
 - Output ONLY the note text. No preamble, no JSON, no commentary.
 
