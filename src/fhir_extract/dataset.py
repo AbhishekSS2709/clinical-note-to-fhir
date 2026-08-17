@@ -10,7 +10,7 @@ from pathlib import Path
 import typer
 import yaml
 
-from .faithfulness import is_faithful
+from .faithfulness import unanchored_facts, invented_facts
 from .profile import ClinicalRecord
 
 app = typer.Typer()
@@ -56,14 +56,23 @@ def main(config: str = "configs/data.yaml") -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     raw, kept = 0, []
+    missing_count, invented_count = 0, 0
     for line in src.open(encoding="utf-8"):
         raw += 1
         row = json.loads(line)
         record = ClinicalRecord.model_validate(row["label"])
-        if is_faithful(row["note"], record):
+        missing = unanchored_facts(row["note"], record)
+        invented = invented_facts(row["note"], record)
+        if missing:
+            missing_count += 1
+        if invented:
+            invented_count += 1
+        if not missing and not invented:
             kept.append(row)
 
     drop_rate = 1 - (len(kept) / raw) if raw else 0.0
+    drop_rate_missing = missing_count / raw if raw else 0.0
+    drop_rate_invented = invented_count / raw if raw else 0.0
     splits = split_by_patient(kept, cfg["splits"], cfg["seed"])
 
     for name, rows in splits.items():
@@ -77,6 +86,8 @@ def main(config: str = "configs/data.yaml") -> None:
         "raw_pairs": raw,
         "kept_pairs": len(kept),
         "drop_rate": round(drop_rate, 4),
+        "drop_rate_missing": round(drop_rate_missing, 4),
+        "drop_rate_invented": round(drop_rate_invented, 4),
         "split_sizes": {k: len(v) for k, v in splits.items()},
         "distinct_2": round(distinct_n([r["note"] for r in kept], 2), 4),
         "distinct_3": round(distinct_n([r["note"] for r in kept], 3), 4),

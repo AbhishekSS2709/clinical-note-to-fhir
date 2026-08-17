@@ -87,6 +87,25 @@ def test_polarity_discriminator_table(gold_text, pred_text, should_match):
     s = score(pred, gold, pred_text)
     assert (s["tp"] == 1) is should_match
 
+def test_digit_discriminator_survives_semantic_tag_stripping():
+    """Regression for the faithfulness.normalise() SNOMED-tag strip: 'Type 1'
+    vs 'Type 2' must still be blocked even when both terms carry a trailing
+    (disorder) tag."""
+    gold = ClinicalRecord(conditions=[Condition(
+        code_text="Type 2 diabetes mellitus (disorder)", clinical_status="active")])
+    pred = ClinicalRecord(conditions=[Condition(
+        code_text="Type 1 diabetes mellitus (disorder)", clinical_status="active")])
+    s = score(pred, gold, "Type 1 diabetes mellitus")
+    assert s["tp"] == 0 and s["fp"] == 1 and s["fn"] == 1
+
+def test_polarity_discriminator_survives_semantic_tag_stripping():
+    gold = ClinicalRecord(conditions=[Condition(
+        code_text="Hyperglycemia (finding)", clinical_status="active")])
+    pred = ClinicalRecord(conditions=[Condition(
+        code_text="Hypoglycemia (finding)", clinical_status="active")])
+    s = score(pred, gold, "Hypoglycemia")
+    assert s["tp"] == 0
+
 def test_unparsed_prediction_is_never_schema_valid():
     """A parse failure that fell back to an empty ClinicalRecord() must not be
     reported as schema-valid just because the empty record itself validates."""
