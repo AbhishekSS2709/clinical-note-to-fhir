@@ -50,3 +50,31 @@ Fix these before publishing any number, not before running the pipeline.
 - **The manifest records seed, model, drop rate and distinct-n, but not the generation
   sampling params or the subset-policy constants.** Changing `KEEP_CONDITIONS` silently
   changes the corpus while the recorded seed stays the same.
+
+## Unverified API assumptions in `train.py` (check these FIRST on the server)
+
+The Qwen3 training patches were written offline with no torch/trl/transformers installed.
+Every item below is an assumption, not a verified fact. Check them before a long training run.
+
+1. TRL exposes `SFTConfig(assistant_only_loss=True)`, or an older one `completion_only_loss=True`,
+   as boolean kwargs with those exact names.
+2. `from trl import DataCollatorForCompletionOnlyLM` still exists on the oldest supported TRL and
+   takes `response_template=` + `tokenizer=`.
+3. `return_assistant_tokens_mask` masking genuinely keys off `{% generation %}` /
+   `{% endgeneration %}` Jinja tags (documented HF behaviour, unverified against the installed version).
+4. **HIGHEST RISK — Qwen3's real chat template.** `ensure_generation_markers` assumes the assistant
+   branch is a flat `{% if/elif role == 'assistant' %} ... {% endif %}` with no confusing nesting.
+   The test fixture is a plausible ChatML approximation, NOT Qwen3's actual template — it could not
+   be fetched offline. Qwen3 is a hybrid thinking model and its template very likely contains
+   nested `<think>` / tool-call blocks inside that branch, which can make the depth-tracking scanner
+   wrap the wrong span or raise "could not find closing tag". **Print the patched template and eyeball
+   it before the first real run.**
+5. `AutoModelForCausalLM.from_pretrained` exposes `dtype`/`torch_dtype` to `inspect.signature`.
+   If a decorator erases the signature, the shim guesses `"dtype"` via a `**kwargs` heuristic.
+6. That passing BOTH `warmup_ratio` and `warmup_steps` is the actual v5 failure mode (implemented
+   defensively; the original diff was unavailable).
+7. `trainer.get_train_dataloader()` and batch `["labels"]` are still the right accessors.
+
+Mitigation: `_verify_masking()` runs automatically before training and raises if the instruction
+text leaks into the unmasked span — so assumptions 1-4 fail LOUDLY at step 0 rather than silently
+producing a badly-trained model. That assertion has never executed on a GPU.
