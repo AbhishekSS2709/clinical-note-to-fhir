@@ -7,6 +7,7 @@ changes two variables at once and inflates the result. See spec section 8.
 """
 import json
 import re
+from .llm_client import LLMBackend, build_backend
 from .profile import ClinicalRecord, VitalObservation, VITAL_LOINC
 
 _PATTERNS = [
@@ -45,18 +46,13 @@ JSON:"""
 
 class LLMBaseline:
     def __init__(self, model: str, shots: int = 0, constrained: bool = False,
-                 examples: list[dict] | None = None):
-        from vllm import LLM, SamplingParams
-        self.llm = LLM(model=model, max_model_len=4096, gpu_memory_utilization=0.90)
+                 examples: list[dict] | None = None,
+                 backend: LLMBackend | None = None):
         self.shots = shots
         self.constrained = constrained
         self.examples = examples or []
-        guided = None
-        if constrained:
-            from vllm.sampling_params import GuidedDecodingParams
-            guided = GuidedDecodingParams(json=ClinicalRecord.model_json_schema())
-        self.params = SamplingParams(temperature=0.0, max_tokens=1024,
-                                     guided_decoding=guided)
+        self.backend = backend or build_backend(
+            {"backend": "vllm", "model": model, "gpu_memory_utilization": 0.90})
 
     def _prompt(self, note: str) -> str:
         prefix = ""
@@ -66,12 +62,14 @@ class LLMBaseline:
         return prefix + EXTRACT_INSTRUCTION.format(note=note)
 
     def extract_batch(self, notes: list[str]) -> list[tuple[ClinicalRecord, bool]]:
-        outputs = self.llm.generate([self._prompt(n) for n in notes], self.params)
+        json_schema = ClinicalRecord.model_json_schema() if self.constrained else None
+        texts = self.backend.complete(
+            [self._prompt(n) for n in notes],
+            temperature=0.0, top_p=1.0, max_tokens=1024, json_schema=json_schema)
         records = []
-        for out in outputs:
+        for text in texts:
             try:
-                records.append((ClinicalRecord.model_validate_json(
-                    out.outputs[0].text.strip()), True))
+                records.append((ClinicalRecord.model_validate_json(text), True))
             except Exception:
                 records.append((ClinicalRecord(), False))  # unparseable == empty prediction
         return records

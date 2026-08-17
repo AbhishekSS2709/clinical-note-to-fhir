@@ -12,20 +12,30 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .baselines import EXTRACT_INSTRUCTION
+from .llm_client import build_backend
 from .profile import ClinicalRecord
 
 cfg = yaml.safe_load(Path("configs/serve.yaml").read_text(encoding="utf-8"))
 app = FastAPI(title="Clinical Note to FHIR")
 
-_engines: dict[str, object] = {}
+_backends: dict[str, object] = {}
 
 
-def _engine(path: str):
-    if path not in _engines:
-        from vllm import LLM
-        _engines[path] = LLM(model=path, max_model_len=4096,
-                             gpu_memory_utilization=cfg["gpu_memory_utilization"])
-    return _engines[path]
+def _backend_for(model_path: str):
+    """One backend per distinct local model path (vllm), or a single shared
+    backend for the openai HTTP endpoint (both tuned and base then route
+    through the same served model -- see docs/decisions/openai-backend.md).
+    """
+    key = "openai" if cfg.get("backend", "vllm") == "openai" else model_path
+    if key not in _backends:
+        if key == "openai":
+            _backends[key] = build_backend(cfg)
+        else:
+            _backends[key] = build_backend({
+                "backend": "vllm", "model": model_path,
+                "gpu_memory_utilization": cfg["gpu_memory_utilization"],
+            })
+    return _backends[key]
 
 
 class ExtractRequest(BaseModel):
@@ -33,19 +43,15 @@ class ExtractRequest(BaseModel):
 
 
 def _run(model_path: str, note: str) -> tuple[dict, float]:
-    from vllm import SamplingParams
-    from vllm.sampling_params import GuidedDecodingParams
-    params = SamplingParams(
-        temperature=0.0, max_tokens=1024,
-        guided_decoding=GuidedDecodingParams(
-            json=ClinicalRecord.model_json_schema()),
-    )
     start = time.perf_counter()
-    out = _engine(model_path).generate(
-        [EXTRACT_INSTRUCTION.format(note=note)], params)
+    texts = _backend_for(model_path).complete(
+        [EXTRACT_INSTRUCTION.format(note=note)],
+        temperature=0.0, top_p=1.0, max_tokens=1024,
+        json_schema=ClinicalRecord.model_json_schema(),
+    )
     elapsed = (time.perf_counter() - start) * 1000
     try:
-        record = ClinicalRecord.model_validate_json(out[0].outputs[0].text.strip())
+        record = ClinicalRecord.model_validate_json(texts[0])
     except Exception:
         record = ClinicalRecord()
     return record.model_dump(), round(elapsed, 1)

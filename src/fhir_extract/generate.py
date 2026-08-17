@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 import yaml
 
+from .llm_client import build_backend
 from .prompts import build_prompt
 from .subset import select_subset
 from .synthea import iter_bundles, parse_bundle
@@ -43,8 +44,6 @@ def _encounter_rng(seed: int, encounter_id: str) -> random.Random:
 
 @app.command()
 def main(config: str = "configs/data.yaml") -> None:
-    from vllm import LLM, SamplingParams
-
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     out_path = Path(cfg["paths"]["interim"]) / "pairs.jsonl"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,24 +66,24 @@ def main(config: str = "configs/data.yaml") -> None:
             break
 
     typer.echo(f"Generating {len(work)} notes")
-    llm = LLM(model=cfg["generation"]["model"], max_model_len=4096,
-              gpu_memory_utilization=0.92)
-    params = SamplingParams(
-        temperature=cfg["generation"]["temperature"],
-        top_p=cfg["generation"]["top_p"],
-        max_tokens=cfg["generation"]["max_tokens"],
-    )
+    backend = build_backend(cfg["generation"])
 
     batch = cfg["generation"]["batch_size"]
     with out_path.open("a", encoding="utf-8") as fh:
         for i in range(0, len(work), batch):
             chunk = work[i:i + batch]
-            outputs = llm.generate([c[2] for c in chunk], params)
-            for (enc, subset, _prompt, meta), out in zip(chunk, outputs):
+            texts = backend.complete(
+                [c[2] for c in chunk],
+                temperature=cfg["generation"]["temperature"],
+                top_p=cfg["generation"]["top_p"],
+                max_tokens=cfg["generation"]["max_tokens"],
+                json_schema=None,
+            )
+            for (enc, subset, _prompt, meta), text in zip(chunk, texts):
                 fh.write(json.dumps({
                     "patient_id": enc.patient_id,
                     "encounter_id": enc.encounter_id,
-                    "note": out.outputs[0].text.strip(),
+                    "note": text,
                     "label": subset.model_dump(),
                     "variant": meta,
                 }) + "\n")

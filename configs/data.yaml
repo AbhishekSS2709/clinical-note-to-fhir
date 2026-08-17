@@ -3,7 +3,13 @@ synthea:
   population: 3000
   output_dir: data/raw/synthea
 generation:
-  model: Qwen/Qwen3-8B
+  backend: openai            # openai | vllm
+  model: Qwen/Qwen3-8B       # must match the id from GET <base_url>/models
+  base_url: http://localhost:8003/v1
+  api_key: EMPTY
+  structured_output_mode: guided_json
+  max_concurrency: 8
+  timeout: 120
   temperature: 0.9
   top_p: 0.95
   max_tokens: 1024
