@@ -4,7 +4,7 @@ from fhir_extract.profile import (
     VitalObservation, Procedure,
 )
 from fhir_extract.synthea import EncounterRecord
-from fhir_extract.subset import select_subset
+from fhir_extract.subset import select_subset, is_narratable
 
 
 def _enc(record: ClinicalRecord) -> EncounterRecord:
@@ -80,3 +80,54 @@ def test_allergy_only_record_is_never_empty():
         total = (len(sub.conditions) + len(sub.medications) + len(sub.allergies)
                  + len(sub.vitals) + len(sub.procedures))
         assert total > 0
+
+
+# -- is_narratable ------------------------------------------------------
+
+def test_narratable_clinical_procedures_are_kept():
+    """These are things a clinician actually writes; keyword matching (not a
+    blanket "(procedure)" drop) must let them through."""
+    for term in ("Echocardiography (procedure)",
+                 "Oxygen administration by mask (procedure)",
+                 "Indirect gonioscopy (procedure)",
+                 "Placing subject in prone position (procedure)"):
+        assert is_narratable(term, "Procedure") is True, term
+
+
+def test_administrative_procedures_are_excluded():
+    for term in ("Depression screening (procedure)",
+                 "Assessment of substance use (procedure)",
+                 "Medication reconciliation (procedure)",
+                 "Patient referral for dental care (procedure)",
+                 "Oral health education (procedure)",
+                 "Assessment using Morse Fall Scale (procedure)",
+                 "Screening for domestic abuse (procedure)"):
+        assert is_narratable(term, "Procedure") is False, term
+
+
+def test_situation_tag_is_excluded_for_any_resource():
+    assert is_narratable("Medication review due (situation)", "MedicationStatement") is False
+
+
+def test_unknown_is_excluded_for_every_resource():
+    for resource in ("Condition", "MedicationStatement", "Procedure", "AllergyIntolerance"):
+        assert is_narratable("unknown", resource) is False
+
+
+def test_social_determinant_findings_are_excluded():
+    assert is_narratable("Stress (finding)", "Condition") is False
+
+
+def test_clinical_findings_are_kept():
+    assert is_narratable("Body mass index 30+ - obesity (finding)", "Condition") is True
+
+
+def test_select_subset_never_selects_administrative_procedures():
+    src = ClinicalRecord(
+        procedures=[Procedure(code_text="Depression screening (procedure)"),
+                    Procedure(code_text="Echocardiography (procedure)")],
+    )
+    for seed in range(30):
+        sub = select_subset(_enc(src), random.Random(seed))
+        texts = {p.code_text for p in sub.procedures}
+        assert "Depression screening (procedure)" not in texts

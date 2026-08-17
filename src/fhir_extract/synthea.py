@@ -67,11 +67,16 @@ def parse_bundle(bundle: dict) -> list[EncounterRecord]:
         rec = bucket(_ref_id(c.get("encounter")))
         if rec is None:
             continue
+        code_text = c.get("code", {}).get("text")
+        if not code_text:
+            # No usable code text; skip rather than leak our own "unknown"
+            # fallback into a label.
+            continue
         status = "active"
         for coding in c.get("clinicalStatus", {}).get("coding", []):
             status = coding.get("code", "active")
         rec.conditions.append(Condition(
-            code_text=c.get("code", {}).get("text", "unknown"),
+            code_text=code_text,
             clinical_status=status if status in CLINICAL_STATUSES else "active",
             onset_date=_day(c.get("onsetDateTime")),
         ))
@@ -80,8 +85,11 @@ def parse_bundle(bundle: dict) -> list[EncounterRecord]:
         rec = bucket(_ref_id(m.get("encounter")))
         if rec is None:
             continue
+        medication_text = m.get("medicationCodeableConcept", {}).get("text")
+        if not medication_text:
+            continue
         rec.medications.append(MedicationStatement(
-            medication_text=m.get("medicationCodeableConcept", {}).get("text", "unknown"),
+            medication_text=medication_text,
             dosage=Dosage(),
             status="active",
         ))
@@ -90,9 +98,12 @@ def parse_bundle(bundle: dict) -> list[EncounterRecord]:
         # Synthea does not attach allergies to an encounter; assign to the earliest.
         if not by_encounter:
             continue
+        substance_text = a.get("code", {}).get("text")
+        if not substance_text:
+            continue
         first = sorted(by_encounter)[0]
         by_encounter[first].allergies.append(AllergyIntolerance(
-            substance_text=a.get("code", {}).get("text", "unknown"),
+            substance_text=substance_text,
             manifestation=[r.get("manifestation", [{}])[0].get("text", "")
                            for r in a.get("reaction", []) if r.get("manifestation")],
             criticality=a.get("criticality"),
@@ -138,8 +149,11 @@ def parse_bundle(bundle: dict) -> list[EncounterRecord]:
         rec = bucket(_ref_id(p.get("encounter")))
         if rec is None:
             continue
+        code_text = p.get("code", {}).get("text")
+        if not code_text:
+            continue
         rec.procedures.append(Procedure(
-            code_text=p.get("code", {}).get("text", "unknown"),
+            code_text=code_text,
             performed_date=_day((p.get("performedPeriod") or {}).get("start")
                                 or p.get("performedDateTime")),
             status="completed",

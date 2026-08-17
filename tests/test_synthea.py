@@ -65,6 +65,51 @@ def test_observation_with_multiple_vital_codings_yields_at_most_one_vital():
     assert len(encounters[0].record.vitals) == 1
 
 
+def test_resource_with_no_code_text_is_skipped_not_labelled_unknown():
+    """The parser's own '.get(..., "unknown")' fallback must never leak into
+    a label -- a Condition/Procedure/Medication/Allergy with no code.text is
+    dropped entirely rather than recorded as the placeholder "unknown"."""
+    bundle = {
+        "entry": [
+            {"resource": {"resourceType": "Patient", "id": "p1",
+                           "birthDate": "1980-01-01", "gender": "male"}},
+            {"resource": {"resourceType": "Encounter", "id": "e1",
+                           "period": {"start": "2020-01-01T00:00:00Z"}}},
+            {"resource": {
+                "resourceType": "Condition", "id": "c1",
+                "code": {},  # no text
+                "encounter": {"reference": "Encounter/e1"},
+            }},
+            {"resource": {
+                "resourceType": "Condition", "id": "c2",
+                "code": {"text": "Chronic sinusitis (disorder)"},
+                "encounter": {"reference": "Encounter/e1"},
+            }},
+            {"resource": {
+                "resourceType": "MedicationStatement", "id": "m1",
+                "medicationCodeableConcept": {},
+                "encounter": {"reference": "Encounter/e1"},
+            }},
+            {"resource": {
+                "resourceType": "Procedure", "id": "pr1",
+                "code": {},
+                "encounter": {"reference": "Encounter/e1"},
+            }},
+            {"resource": {
+                "resourceType": "AllergyIntolerance", "id": "a1",
+                "code": {},
+            }},
+        ]
+    }
+    encounters = parse_bundle(bundle)
+    assert len(encounters) == 1
+    rec = encounters[0].record
+    assert [c.code_text for c in rec.conditions] == ["Chronic sinusitis (disorder)"]
+    assert rec.medications == []
+    assert rec.procedures == []
+    assert rec.allergies == []
+
+
 def test_blood_pressure_panel_yields_both_components():
     """Real Synthea exports BP as one Observation (85354-9, not itself in
     VITAL_LOINC) with no top-level valueQuantity, carrying systolic (8480-6)
