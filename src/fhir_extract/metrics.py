@@ -16,22 +16,41 @@ RESOURCES = ("conditions", "medications", "allergies", "vitals", "procedures")
 
 _DIGIT_RE = re.compile(r"\d+")
 
+# Opposed clinical prefixes: a word starting with one and a word starting
+# with the other make the two terms clinically opposite, not variants.
+_OPPOSED_PREFIXES = (
+    ("hyper", "hypo"),
+    ("acute", "chronic"),
+    ("primary", "secondary"),
+)
+
+
+def _has_word_prefix(text: str, prefix: str) -> bool:
+    return any(w.startswith(prefix) for w in text.split())
+
 
 def _discriminators_conflict(a: str, b: str) -> bool:
     """Block fuzzy matches between clinically distinct terms.
 
     token_sort_ratio scores strings that differ only in a single discriminating
-    token (a digit like "type 1"/"type 2" or "stage 3"/"stage 4", or laterality
-    like "left"/"right") as near-identical, because that token is a small share
-    of the string. But that token is exactly what makes the clinical facts
-    different, and sometimes dangerously so (e.g. type 1 vs type 2 diabetes).
-    A fuzzy match must never paper over a difference in these tokens.
+    token (a digit like "type 1"/"type 2" or "stage 3"/"stage 4", laterality
+    like "left"/"right", or an opposed clinical prefix like "hyper"/"hypo")
+    as near-identical, because that token is a small share of the string. But
+    that token is exactly what makes the clinical facts different, and
+    sometimes dangerously so (e.g. type 1 vs type 2 diabetes, hyperglycemia
+    vs hypoglycemia). A fuzzy match must never paper over a difference in
+    these tokens.
     """
     if set(_DIGIT_RE.findall(a)) != set(_DIGIT_RE.findall(b)):
         return True
     a_words, b_words = set(a.split()), set(b.split())
     if ("left" in a_words and "right" in b_words) or ("right" in a_words and "left" in b_words):
         return True
+    for p1, p2 in _OPPOSED_PREFIXES:
+        if _has_word_prefix(a, p1) and _has_word_prefix(b, p2):
+            return True
+        if _has_word_prefix(a, p2) and _has_word_prefix(b, p1):
+            return True
     return False
 
 
@@ -73,7 +92,7 @@ def _match(pred: list[str], gold: list[str], fuzzy: bool) -> tuple[int, int, int
     return tp, len(pred) - tp, len(remaining)
 
 
-def score(pred: ClinicalRecord, gold: ClinicalRecord, note: str) -> dict:
+def score(pred: ClinicalRecord, gold: ClinicalRecord, note: str, parsed: bool = True) -> dict:
     per_resource: dict[str, dict] = {}
     tp = fp = fn = 0
     for resource in RESOURCES:
@@ -84,7 +103,9 @@ def score(pred: ClinicalRecord, gold: ClinicalRecord, note: str) -> dict:
 
     return {
         "tp": tp, "fp": fp, "fn": fn,
-        "schema_valid": validate_as_fhir(pred) == [],
+        # A record that never parsed as JSON is not schema-valid regardless of
+        # what the fallback-empty ClinicalRecord() would otherwise validate as.
+        "schema_valid": parsed and validate_as_fhir(pred) == [],
         # A predicted fact with no anchor in the note is a hallucination.
         "hallucinated": len(unanchored_facts(note, pred)),
         "omitted": fn,

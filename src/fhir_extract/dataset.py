@@ -37,13 +37,13 @@ def split_by_patient(rows: list[dict], ratios: dict[str, int],
     random.Random(seed).shuffle(patients)
 
     splits: dict[str, list[dict]] = {k: [] for k in ratios}
-    order = list(ratios)
+    # Fill held-out splits to their targets first; everything else overflows to train.
+    order = [k for k in ratios if k != "train"]
     idx = 0
     for patient in patients:
-        # Fill splits in order until each hits its target, then overflow to train.
         while idx < len(order) and len(splits[order[idx]]) >= ratios[order[idx]]:
             idx += 1
-        target = order[idx] if idx < len(order) else order[0]
+        target = order[idx] if idx < len(order) else "train"
         splits[target].extend(by_patient[patient])
     return splits
 

@@ -1,3 +1,5 @@
+import pytest
+
 from fhir_extract.profile import ClinicalRecord, Condition, MedicationStatement, Procedure
 from fhir_extract.metrics import score, aggregate
 
@@ -70,3 +72,25 @@ def test_best_match_not_first_match():
         Condition(code_text="Asthma", clinical_status="active")])
     s = score(pred, gold, "Asthma exacerbation and Asthma")
     assert s["tp"] == 2, "both should match their exact counterparts"
+
+@pytest.mark.parametrize("gold_text,pred_text,should_match", [
+    ("Hyperglycemia", "Hypoglycemia", False),
+    ("Hypothyroidism", "Hyperthyroidism", False),
+    ("Hypercalcemia", "Hypocalcemia", False),
+    ("Acute pancreatitis", "Chronic pancreatitis", False),
+    ("Asthma", "asthma", True),
+    ("Asthma", "Asthma", True),
+])
+def test_polarity_discriminator_table(gold_text, pred_text, should_match):
+    gold = ClinicalRecord(conditions=[Condition(code_text=gold_text, clinical_status="active")])
+    pred = ClinicalRecord(conditions=[Condition(code_text=pred_text, clinical_status="active")])
+    s = score(pred, gold, pred_text)
+    assert (s["tp"] == 1) is should_match
+
+def test_unparsed_prediction_is_never_schema_valid():
+    """A parse failure that fell back to an empty ClinicalRecord() must not be
+    reported as schema-valid just because the empty record itself validates."""
+    rec = ClinicalRecord()
+    gold = ClinicalRecord()
+    s = score(rec, gold, "note", parsed=False)
+    assert s["schema_valid"] is False

@@ -65,13 +65,13 @@ class LLMBaseline:
             prefix += json.dumps(ex["label"]) + "\n\n"
         return prefix + EXTRACT_INSTRUCTION.format(note=note)
 
-    def extract_batch(self, notes: list[str]) -> list[ClinicalRecord]:
+    def extract_batch(self, notes: list[str]) -> list[tuple[ClinicalRecord, bool]]:
         outputs = self.llm.generate([self._prompt(n) for n in notes], self.params)
         records = []
         for out in outputs:
             try:
-                records.append(ClinicalRecord.model_validate_json(
-                    out.outputs[0].text.strip()))
+                records.append((ClinicalRecord.model_validate_json(
+                    out.outputs[0].text.strip()), True))
             except Exception:
-                records.append(ClinicalRecord())  # unparseable == empty prediction
+                records.append((ClinicalRecord(), False))  # unparseable == empty prediction
         return records

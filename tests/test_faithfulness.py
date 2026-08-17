@@ -44,3 +44,13 @@ def test_empty_term_is_not_anchored():
 def test_whitespace_term_is_not_anchored():
     rec = ClinicalRecord(conditions=[Condition(code_text="   ", clinical_status="active")])
     assert unanchored_facts("Patient is well.", rec) != []
+
+def test_shared_generic_head_word_is_not_an_anchor():
+    """'Acute bronchitis' must NOT be anchored by a note about acute pharyngitis."""
+    rec = ClinicalRecord(conditions=[Condition(code_text="Acute bronchitis",
+                                               clinical_status="active")])
+    assert is_faithful("Patient seen for acute viral pharyngitis.", rec) is False
+
+def test_shared_drug_stem_is_not_an_anchor():
+    rec = ClinicalRecord(medications=[MedicationStatement(medication_text="Insulin glargine")])
+    assert is_faithful("Started on insulin lispro", rec) is False

@@ -4,6 +4,7 @@ without importing vllm (system="regex" never touches LLMBaseline).
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from fhir_extract.eval import main
@@ -37,3 +38,18 @@ def test_constrained_flag_changes_output_tag(tmp_path, monkeypatch):
 
     assert json.loads(unconstrained.read_text())["constrained"] is False
     assert json.loads(constrained.read_text())["constrained"] is True
+
+
+def test_empty_split_raises_instead_of_writing_a_meaningless_result(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    (processed / "test_synthetic.jsonl").write_text("", encoding="utf-8")
+    (processed / "train.jsonl").write_text("", encoding="utf-8")
+
+    config = tmp_path / "data.yaml"
+    config.write_text(yaml.dump({"paths": {"processed": str(processed)}}),
+                       encoding="utf-8")
+
+    with pytest.raises(ValueError, match="test_synthetic.jsonl"):
+        main(config=str(config), system="regex")

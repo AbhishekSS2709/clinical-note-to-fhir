@@ -45,9 +45,6 @@ def _text_anchored(term: str, note_norm: str) -> bool:
             re.search(rf"\b{re.escape(a)}\b", note_norm) for a in abbrevs
         ):
             return True
-    head = term_norm.split()[0]
-    if len(head) >= 5 and head in note_norm:
-        return True
     return fuzz.partial_ratio(term_norm, note_norm) >= FUZZ_THRESHOLD
 
 

@@ -25,17 +25,22 @@ def main(
     constrained: bool = False,
 ) -> None:
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
-    rows = _load(Path(cfg["paths"]["processed"]) / f"{split}.jsonl")
+    split_path = Path(cfg["paths"]["processed"]) / f"{split}.jsonl"
+    rows = _load(split_path)
+    if not rows:
+        raise ValueError(f"split '{split}' is empty: {split_path} contains no rows; "
+                         "refusing to write a meaningless 0.0 result")
     notes = [r["note"] for r in rows]
     golds = [ClinicalRecord.model_validate(r["label"]) for r in rows]
 
     if system == "regex":
-        preds = [regex_extract(n) for n in notes]
+        preds = [(regex_extract(n), True) for n in notes]
     else:
         examples = _load(Path(cfg["paths"]["processed"]) / "train.jsonl")[:shots]
         preds = LLMBaseline(model, shots, constrained, examples).extract_batch(notes)
 
-    results = aggregate([score(p, g, n) for p, g, n in zip(preds, golds, notes)])
+    results = aggregate([score(p, g, n, parsed=parsed)
+                         for (p, parsed), g, n in zip(preds, golds, notes)])
     results["system"] = system
     results["model"] = model if system != "regex" else None
     results["shots"] = shots
