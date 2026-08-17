@@ -14,7 +14,14 @@ end-to-end, not just this batch's four tasks.
    `configs/data.yaml`). Produces `data/interim/pairs.jsonl` and, via Task 4/8's
    `make data` split step, `data/processed/{train,val,test_synthetic}.jsonl`.
 3. **[Task 10]** Run the five baseline eval commands to populate `outputs/eval/*.json`
-   and establish the 8B zero-shot number Task 11's fine-tune must beat:
+   and establish the 8B zero-shot number Task 11's fine-tune must beat. The four `llm`
+   commands are **no longer GPU-blocked**: `eval.py` now builds its backend from
+   `configs/data.yaml`'s `inference:` block (`backend: openai`, pointed at the vLLM
+   OpenAI endpoint) instead of hardcoding an in-process vLLM engine, so they run from
+   any machine that can reach the endpoint — see
+   [`docs/decisions/openai-backend.md`](decisions/openai-backend.md). `--model` still
+   overrides `inference.model` per command below. Only this item's dependency on Task 6's
+   output (`data/processed/*.jsonl` must exist) remains GPU-blocked, via note generation:
    ```
    python -m fhir_extract.eval --system regex
    python -m fhir_extract.eval --system llm --model Qwen/Qwen3-8B --shots 0

@@ -1,4 +1,6 @@
-from fhir_extract.baselines import regex_extract, parse_record
+import pytest
+
+from fhir_extract.baselines import LLMBaseline, regex_extract, parse_record
 
 
 def test_regex_extracts_blood_pressure():
@@ -45,3 +47,10 @@ def test_parse_record_unparseable_text_returns_empty_record_and_false():
     record, parsed = parse_record("not json at all")
     assert parsed is False
     assert record.conditions == [] and record.medications == []
+
+
+def test_llm_baseline_raises_clear_error_with_neither_backend_nor_config():
+    """No hardcoded vllm fallback: LLMBaseline must not silently default to
+    a backend that isn't installed. See docs/decisions/openai-backend.md."""
+    with pytest.raises(ValueError, match="backend"):
+        LLMBaseline(model="Qwen/Qwen3-8B")

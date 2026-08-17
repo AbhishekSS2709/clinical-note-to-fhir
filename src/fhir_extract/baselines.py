@@ -68,14 +68,37 @@ def parse_record(text: str) -> tuple[ClinicalRecord, bool]:
 
 
 class LLMBaseline:
-    def __init__(self, model: str, shots: int = 0, constrained: bool = False,
+    """LLM-backed baseline. Needs either a pre-built `backend` or an
+    `inference_config` dict to build one from via `build_backend()` -- there
+    is no default backend. It used to default to an in-process vLLM engine,
+    which crashes with ModuleNotFoundError on any machine without vllm
+    installed; see docs/decisions/openai-backend.md.
+
+    `inference_config` also supplies sampling overrides (`temperature`,
+    `top_p`, `max_tokens`), falling back to the same defaults as before
+    (0.0, 1.0, 1024) when absent.
+    """
+
+    def __init__(self, model: str = "", shots: int = 0, constrained: bool = False,
                  examples: list[dict] | None = None,
-                 backend: LLMBackend | None = None):
+                 backend: LLMBackend | None = None,
+                 inference_config: dict | None = None):
+        if backend is None and inference_config is None:
+            raise ValueError(
+                "LLMBaseline needs either backend=<LLMBackend> or "
+                "inference_config=<dict, passed to build_backend()>; got "
+                "neither. There is no default backend."
+            )
         self.shots = shots
         self.constrained = constrained
         self.examples = examples or []
-        self.backend = backend or build_backend(
-            {"backend": "vllm", "model": model, "gpu_memory_utilization": 0.90})
+        icfg = dict(inference_config or {})
+        if model:
+            icfg["model"] = model
+        self.backend = backend if backend is not None else build_backend(icfg)
+        self.temperature = icfg.get("temperature", 0.0)
+        self.top_p = icfg.get("top_p", 1.0)
+        self.max_tokens = icfg.get("max_tokens", 1024)
 
     def _prompt(self, note: str) -> str:
         prefix = ""
@@ -88,5 +111,6 @@ class LLMBaseline:
         json_schema = ClinicalRecord.model_json_schema() if self.constrained else None
         texts = self.backend.complete(
             [self._prompt(n) for n in notes],
-            temperature=0.0, top_p=1.0, max_tokens=1024, json_schema=json_schema)
+            temperature=self.temperature, top_p=self.top_p,
+            max_tokens=self.max_tokens, json_schema=json_schema)
         return [parse_record(text) for text in texts]

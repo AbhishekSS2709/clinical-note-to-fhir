@@ -61,10 +61,14 @@ generation:
 ```
 
 Then run `generate.py` / `eval.py` as before — no code changes needed.
-`baselines.py`'s `LLMBaseline(model, shots, constrained, examples)` keeps
-building an in-process vLLM backend when called with its original signature
-(unchanged, for `eval.py` and existing callers); pass `backend=build_backend(cfg)`
-explicitly to route a baseline through the HTTP endpoint instead.
+`eval.py` reads its own backend config from `configs/data.yaml`'s
+`inference:` block (separate from `generation:`, since evaluation wants
+deterministic sampling and generation wants diverse sampling), builds it via
+`build_backend()`, and passes it to `LLMBaseline(..., backend=...,
+inference_config=...)`. `LLMBaseline` itself has no default backend — it
+requires either `backend=` or `inference_config=` and raises a clear error
+if given neither, rather than defaulting to an in-process vLLM engine that
+may not be installed.
 
 ## Two models, one endpoint
 

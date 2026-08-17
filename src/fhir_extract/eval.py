@@ -1,10 +1,12 @@
 """Eval harness. Every number in the README comes from here."""
 import json
 from pathlib import Path
+from typing import Optional
 import typer
 import yaml
 
 from .baselines import LLMBaseline, regex_extract
+from .llm_client import build_backend
 from .metrics import aggregate, score
 from .profile import ClinicalRecord
 
@@ -20,7 +22,7 @@ def main(
     config: str = "configs/data.yaml",
     split: str = "test_synthetic",
     system: str = "regex",
-    model: str = "Qwen/Qwen3-8B",
+    model: Optional[str] = None,
     shots: int = 0,
     constrained: bool = False,
 ) -> None:
@@ -33,16 +35,31 @@ def main(
     notes = [r["note"] for r in rows]
     golds = [ClinicalRecord.model_validate(r["label"]) for r in rows]
 
+    resolved_model = model
+
     if system == "regex":
         preds = [(regex_extract(n), True) for n in notes]
     else:
+        if "inference" not in cfg:
+            raise ValueError(
+                f"config {config!r} has no 'inference:' block, required for "
+                f"system={system!r}; add one (see configs/data.yaml) rather "
+                "than relying on a hardcoded default backend."
+            )
+        inference_cfg = dict(cfg["inference"])
+        if model is not None:
+            inference_cfg["model"] = model
+        resolved_model = inference_cfg.get("model")
+        backend = build_backend(inference_cfg)
         examples = _load(Path(cfg["paths"]["processed"]) / "train.jsonl")[:shots]
-        preds = LLMBaseline(model, shots, constrained, examples).extract_batch(notes)
+        preds = LLMBaseline(resolved_model, shots, constrained, examples,
+                             backend=backend,
+                             inference_config=inference_cfg).extract_batch(notes)
 
     results = aggregate([score(p, g, n, parsed=parsed)
                          for (p, parsed), g, n in zip(preds, golds, notes)])
     results["system"] = system
-    results["model"] = model if system != "regex" else None
+    results["model"] = resolved_model if system != "regex" else None
     results["shots"] = shots
     results["constrained"] = constrained
     results["split"] = split

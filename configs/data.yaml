@@ -16,6 +16,15 @@ generation:
   max_tokens: 1024
   target_pairs: 24000        # over-generate ~3x; filter down to ~8000
   batch_size: 64
+inference:                   # used by eval.py's LLM baselines (--system llm)
+  backend: openai
+  model: Qwen/Qwen3-8B
+  base_url: http://10.24.6.107:8003/v1
+  api_key: EMPTY
+  structured_output_mode: json_schema
+  enable_thinking: false
+  max_concurrency: 8
+  timeout: 120
 splits:
   train: 8000
   val: 500
