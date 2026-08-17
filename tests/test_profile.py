@@ -74,3 +74,21 @@ def test_clinical_statuses_constant_matches_literal():
     assert CLINICAL_STATUSES == frozenset({
         "active", "recurrence", "relapse", "inactive", "remission", "resolved"
     })
+
+
+def test_vital_display_not_required_in_schema():
+    """display is derived from loinc_code; constrained decoding must not be
+    asked to produce it."""
+    schema = ClinicalRecord.model_json_schema()
+    vitals_ref = schema["properties"]["vitals"]["items"]["$ref"]
+    def_name = vitals_ref.rsplit("/", 1)[-1]
+    vital_def = schema["$defs"][def_name]
+    assert "display" not in vital_def.get("required", [])
+
+
+def test_vital_display_is_derived_from_loinc_code_not_input():
+    """A wrong display supplied by a caller (e.g. a model) must be
+    overwritten with the display that actually matches loinc_code."""
+    vital = VitalObservation(loinc_code="8867-4", display="Systolic blood pressure",
+                              value=82.0, unit="bpm")
+    assert vital.display == "Heart rate"

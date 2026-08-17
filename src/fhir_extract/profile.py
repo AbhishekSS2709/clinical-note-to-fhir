@@ -5,7 +5,7 @@ FHIR R4, restricted to the fields an extraction model can plausibly recover
 from a clinical note. See spec section 2.
 """
 from typing import Literal, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # LOINC codes for the eight vitals we support.
 VITAL_LOINC: dict[str, tuple[str, str]] = {
@@ -19,6 +19,8 @@ VITAL_LOINC: dict[str, tuple[str, str]] = {
     "height":       ("8302-2",  "Body height"),
 }
 _VALID_LOINC = {code for code, _ in VITAL_LOINC.values()}
+# code -> display, for deriving VitalObservation.display from loinc_code.
+_LOINC_DISPLAY: dict[str, str] = {code: display for code, display in VITAL_LOINC.values()}
 # Derived from VITAL_LOINC so constrained decoding structurally cannot emit a
 # code outside the eight this profile supports; the two cannot drift apart.
 VitalLoincCode = Literal[tuple(sorted(_VALID_LOINC))]
@@ -69,7 +71,11 @@ class AllergyIntolerance(BaseModel):
 
 class VitalObservation(BaseModel):
     loinc_code: VitalLoincCode
-    display: str
+    # Derived from loinc_code via VITAL_LOINC (see _derive_display below); not
+    # required input, and any supplied value is overwritten. This keeps a
+    # record from validating while internally self-contradictory (e.g. code
+    # 8867-4 "Heart rate" paired with display "Systolic blood pressure").
+    display: str = ""
     value: float
     unit: str
 
@@ -79,6 +85,11 @@ class VitalObservation(BaseModel):
         if v not in _VALID_LOINC:
             raise ValueError(f"unsupported LOINC code {v!r}; profile covers {_VALID_LOINC}")
         return v
+
+    @model_validator(mode="after")
+    def _derive_display(self) -> "VitalObservation":
+        self.display = _LOINC_DISPLAY[self.loinc_code]
+        return self
 
 
 class Procedure(BaseModel):
