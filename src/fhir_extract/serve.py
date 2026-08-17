@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .baselines import EXTRACT_INSTRUCTION
+from .baselines import EXTRACT_INSTRUCTION, parse_record
 from .llm_client import build_backend
 from .profile import ClinicalRecord
 
@@ -77,10 +77,11 @@ def _backend_for(model_id: str):
                 "base_url": cfg["base_url"],
                 "model": model_id,
                 "api_key": cfg.get("api_key", "EMPTY"),
-                "structured_output_mode": cfg.get("structured_output_mode", "guided_json"),
+                "structured_output_mode": cfg.get("structured_output_mode", "json_schema"),
                 "max_concurrency": cfg.get("max_concurrency", 8),
                 "timeout": cfg.get("timeout", 120),
                 "max_retries": cfg.get("max_retries", 3),
+                "enable_thinking": cfg.get("enable_thinking", False),
             })
         else:
             _backends[model_id] = build_backend({
@@ -102,10 +103,7 @@ def _run(model_id: str, note: str) -> tuple[dict, float]:
         json_schema=ClinicalRecord.model_json_schema(),
     )
     elapsed = (time.perf_counter() - start) * 1000
-    try:
-        record = ClinicalRecord.model_validate_json(texts[0])
-    except Exception:
-        record = ClinicalRecord()
+    record, _parsed = parse_record(texts[0])
     return record.model_dump(), round(elapsed, 1)
 
 

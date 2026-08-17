@@ -1,4 +1,4 @@
-from fhir_extract.baselines import regex_extract
+from fhir_extract.baselines import regex_extract, parse_record
 
 
 def test_regex_extracts_blood_pressure():
@@ -17,3 +17,31 @@ def test_regex_extracts_temperature():
 def test_regex_finds_nothing_in_prose():
     rec = regex_extract("The patient feels unwell today.")
     assert rec.vitals == []
+
+
+def test_parse_record_accepts_plain_json():
+    record, parsed = parse_record('{"conditions": [], "medications": [], '
+                                   '"allergies": [], "vitals": [], "procedures": []}')
+    assert parsed is True
+    assert record.conditions == []
+
+
+def test_parse_record_strips_markdown_json_fence():
+    text = ('```json\n{"conditions": [], "medications": [], "allergies": [], '
+            '"vitals": [], "procedures": []}\n```')
+    record, parsed = parse_record(text)
+    assert parsed is True
+    assert record.medications == []
+
+
+def test_parse_record_strips_bare_fence_without_json_tag():
+    text = ('```\n{"conditions": [], "medications": [], "allergies": [], '
+            '"vitals": [], "procedures": []}\n```')
+    record, parsed = parse_record(text)
+    assert parsed is True
+
+
+def test_parse_record_unparseable_text_returns_empty_record_and_false():
+    record, parsed = parse_record("not json at all")
+    assert parsed is False
+    assert record.conditions == [] and record.medications == []

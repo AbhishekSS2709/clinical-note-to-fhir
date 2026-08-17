@@ -55,8 +55,8 @@ class OpenAIBackend:
 
     def __init__(self, base_url: str, model: str, api_key: str = "EMPTY",
                  timeout: float = 120, max_retries: int = 3,
-                 structured_output_mode: str = "guided_json",
-                 max_concurrency: int = 8):
+                 structured_output_mode: str = "json_schema",
+                 max_concurrency: int = 8, enable_thinking: bool = False):
         if not model:
             raise ValueError(
                 "config key 'model' is required for the openai backend (it "
@@ -74,6 +74,7 @@ class OpenAIBackend:
         self.model = model
         self.structured_output_mode = structured_output_mode
         self.max_concurrency = max_concurrency
+        self.enable_thinking = enable_thinking
 
     def _structured_kwargs(self, json_schema: dict | None) -> dict:
         if json_schema is None or self.structured_output_mode == "none":
@@ -83,10 +84,24 @@ class OpenAIBackend:
         return {"response_format": {"type": "json_schema", "json_schema": {
             "name": "clinical_record", "schema": json_schema}}}
 
+    def _request_kwargs(self, json_schema: dict | None) -> dict:
+        """Structured-output kwargs plus the thinking-mode toggle, merged so
+        neither clobbers the other's `extra_body` keys. Qwen3 is a hybrid
+        thinking model with thinking on by default; thinking burns the token
+        budget (and truncates JSON output) unless explicitly disabled via
+        `chat_template_kwargs.enable_thinking` in `extra_body`.
+        """
+        kwargs = self._structured_kwargs(json_schema)
+        if self.enable_thinking:
+            return kwargs
+        extra_body = {**kwargs.get("extra_body", {}),
+                      "chat_template_kwargs": {"enable_thinking": False}}
+        return {**kwargs, "extra_body": extra_body}
+
     def complete(self, prompts: list[str], *, temperature: float, top_p: float,
                  max_tokens: int, json_schema: dict | None) -> list[str]:
         results: list[str] = [""] * len(prompts)
-        extra = self._structured_kwargs(json_schema)
+        extra = self._request_kwargs(json_schema)
 
         def _one(index: int, prompt: str) -> tuple[int, str]:
             try:
@@ -122,8 +137,9 @@ def build_backend(cfg: dict) -> LLMBackend:
             api_key=cfg.get("api_key", "EMPTY"),
             timeout=cfg.get("timeout", 120),
             max_retries=cfg.get("max_retries", 3),
-            structured_output_mode=cfg.get("structured_output_mode", "guided_json"),
+            structured_output_mode=cfg.get("structured_output_mode", "json_schema"),
             max_concurrency=cfg.get("max_concurrency", 8),
+            enable_thinking=cfg.get("enable_thinking", False),
         )
     if backend == "vllm":
         return VLLMBackend(

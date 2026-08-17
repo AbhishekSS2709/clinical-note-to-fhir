@@ -43,6 +43,29 @@ Note:
 
 JSON:"""
 
+_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", re.DOTALL)
+
+
+def _strip_json_fence(text: str) -> str:
+    """Strip a leading ```json / ``` fence and trailing ``` if present."""
+    match = _JSON_FENCE_RE.match(text.strip())
+    return match.group(1).strip() if match else text
+
+
+def parse_record(text: str) -> tuple[ClinicalRecord, bool]:
+    """Parse a completion into a ClinicalRecord. Tries the raw text first,
+    then with a markdown code fence stripped -- some servers wrap JSON output
+    in ```json ... ``` even under constrained decoding. A fence-stripped
+    parse still counts as success; only genuinely unparseable output counts
+    as a parse failure.
+    """
+    for candidate in (text, _strip_json_fence(text)):
+        try:
+            return ClinicalRecord.model_validate_json(candidate), True
+        except Exception:
+            continue
+    return ClinicalRecord(), False
+
 
 class LLMBaseline:
     def __init__(self, model: str, shots: int = 0, constrained: bool = False,
@@ -66,10 +89,4 @@ class LLMBaseline:
         texts = self.backend.complete(
             [self._prompt(n) for n in notes],
             temperature=0.0, top_p=1.0, max_tokens=1024, json_schema=json_schema)
-        records = []
-        for text in texts:
-            try:
-                records.append((ClinicalRecord.model_validate_json(text), True))
-            except Exception:
-                records.append((ClinicalRecord(), False))  # unparseable == empty prediction
-        return records
+        return [parse_record(text) for text in texts]

@@ -5,9 +5,10 @@ synthea:
 generation:
   backend: openai            # openai | vllm
   model: Qwen/Qwen3-8B       # must match the id from GET <base_url>/models
-  base_url: http://localhost:8003/v1
+  base_url: http://10.24.6.107:8003/v1
   api_key: EMPTY
-  structured_output_mode: guided_json
+  structured_output_mode: json_schema
+  enable_thinking: false
   max_concurrency: 8
   timeout: 120
   temperature: 0.9

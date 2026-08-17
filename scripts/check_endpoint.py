@@ -28,7 +28,7 @@ def main() -> None:
     parser.add_argument("--base-url", default=defaults.get("base_url"))
     parser.add_argument("--model", default=defaults.get("model"))
     parser.add_argument("--structured-output-mode",
-                         default=defaults.get("structured_output_mode", "guided_json"),
+                         default=defaults.get("structured_output_mode", "json_schema"),
                          choices=["guided_json", "json_schema", "none"])
     args = parser.parse_args()
 

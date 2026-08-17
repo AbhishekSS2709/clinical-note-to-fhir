@@ -1,9 +1,10 @@
 backend: vllm                  # openai | vllm
 
 # --- backend: openai ---  two model ids, one shared endpoint
-base_url: http://localhost:8003/v1
+base_url: http://10.24.6.107:8003/v1
 api_key: EMPTY
-structured_output_mode: guided_json
+structured_output_mode: json_schema
+enable_thinking: false
 openai_tuned_model: fhir-tuned      # served via: vllm serve <base> --lora-modules fhir-tuned=outputs/adapters/qlora-8b
 openai_base_model: Qwen/Qwen3-8B    # must match an id from GET <base_url>/models
 

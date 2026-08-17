@@ -83,7 +83,8 @@ def test_structured_output_mode_guided_json_uses_extra_body():
     with mock.patch("openai.OpenAI") as mock_cls:
         mock_cls.return_value.chat.completions.create.side_effect = create
         backend = OpenAIBackend(base_url="http://x/v1", model="m",
-                                 structured_output_mode="guided_json")
+                                 structured_output_mode="guided_json",
+                                 enable_thinking=True)
         backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
                           json_schema={"type": "object"})
 
@@ -101,7 +102,8 @@ def test_structured_output_mode_json_schema_uses_response_format():
     with mock.patch("openai.OpenAI") as mock_cls:
         mock_cls.return_value.chat.completions.create.side_effect = create
         backend = OpenAIBackend(base_url="http://x/v1", model="m",
-                                 structured_output_mode="json_schema")
+                                 structured_output_mode="json_schema",
+                                 enable_thinking=True)
         backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
                           json_schema={"type": "object"})
 
@@ -122,7 +124,8 @@ def test_structured_output_mode_none_sends_no_hint():
     with mock.patch("openai.OpenAI") as mock_cls:
         mock_cls.return_value.chat.completions.create.side_effect = create
         backend = OpenAIBackend(base_url="http://x/v1", model="m",
-                                 structured_output_mode="none")
+                                 structured_output_mode="none",
+                                 enable_thinking=True)
         backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
                           json_schema={"type": "object"})
 
@@ -141,12 +144,95 @@ def test_no_json_schema_sends_no_hint_in_any_mode(mode):
     with mock.patch("openai.OpenAI") as mock_cls:
         mock_cls.return_value.chat.completions.create.side_effect = create
         backend = OpenAIBackend(base_url="http://x/v1", model="m",
-                                 structured_output_mode=mode)
+                                 structured_output_mode=mode, enable_thinking=True)
         backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
                           json_schema=None)
 
     assert "extra_body" not in captured
     assert "response_format" not in captured
+
+
+def test_enable_thinking_false_disables_thinking_via_chat_template_kwargs():
+    """Default enable_thinking=False must suppress Qwen3's default-on
+    thinking mode, which otherwise burns the token budget on reasoning
+    tokens and can truncate the completion before any content is emitted."""
+    captured = {}
+
+    def create(model, messages, **kwargs):
+        captured.update(kwargs)
+        return _response("{}")
+
+    with mock.patch("openai.OpenAI") as mock_cls:
+        mock_cls.return_value.chat.completions.create.side_effect = create
+        backend = OpenAIBackend(base_url="http://x/v1", model="m",
+                                 structured_output_mode="none")
+        backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
+                          json_schema=None)
+
+    assert captured["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_enable_thinking_true_sends_no_thinking_hint():
+    captured = {}
+
+    def create(model, messages, **kwargs):
+        captured.update(kwargs)
+        return _response("{}")
+
+    with mock.patch("openai.OpenAI") as mock_cls:
+        mock_cls.return_value.chat.completions.create.side_effect = create
+        backend = OpenAIBackend(base_url="http://x/v1", model="m",
+                                 structured_output_mode="none", enable_thinking=True)
+        backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
+                          json_schema=None)
+
+    assert "extra_body" not in captured
+
+
+def test_enable_thinking_false_composes_with_guided_json_extra_body():
+    """chat_template_kwargs and guided_json must both land in extra_body --
+    neither should clobber the other."""
+    captured = {}
+
+    def create(model, messages, **kwargs):
+        captured.update(kwargs)
+        return _response("{}")
+
+    with mock.patch("openai.OpenAI") as mock_cls:
+        mock_cls.return_value.chat.completions.create.side_effect = create
+        backend = OpenAIBackend(base_url="http://x/v1", model="m",
+                                 structured_output_mode="guided_json")
+        backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
+                          json_schema={"type": "object"})
+
+    assert captured["extra_body"] == {
+        "guided_json": {"type": "object"},
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+
+
+def test_enable_thinking_false_composes_with_json_schema_response_format():
+    """structured_output_mode='json_schema' uses response_format, not
+    extra_body, for the schema -- the thinking toggle must still land in
+    extra_body alongside it without disturbing response_format."""
+    captured = {}
+
+    def create(model, messages, **kwargs):
+        captured.update(kwargs)
+        return _response("{}")
+
+    with mock.patch("openai.OpenAI") as mock_cls:
+        mock_cls.return_value.chat.completions.create.side_effect = create
+        backend = OpenAIBackend(base_url="http://x/v1", model="m",
+                                 structured_output_mode="json_schema")
+        backend.complete(["p"], temperature=0.0, top_p=1.0, max_tokens=16,
+                          json_schema={"type": "object"})
+
+    assert captured["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert captured["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "clinical_record", "schema": {"type": "object"}},
+    }
 
 
 def test_single_failure_yields_empty_string_others_unaffected():
