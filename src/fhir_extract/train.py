@@ -1,10 +1,14 @@
 """QLoRA fine-tune. Resumable by design -- server access is intermittent."""
 import inspect
+import logging
 import json
+import math
 import re
 from pathlib import Path
 import typer
 import yaml
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
@@ -22,7 +26,28 @@ _JINJA_TAG_RE = re.compile(r"\{%-?\s*(\w+)")
 
 
 def ensure_generation_markers(tokenizer) -> bool:
-    """Ensure `tokenizer.chat_template` wraps the assistant turn in
+    """SUPERSEDED -- replace with the server-verified implementation.
+
+    This version was written OFFLINE against a guessed ChatML-shaped
+    template and is known to be WRONG for Qwen3: it wraps the assistant
+    if/elif *branch body*, but in Qwen3's real template that body emits
+    the ``<|im_start|>assistant
+`` header itself (in three branches), so
+    the header lands INSIDE the supervised span. The header is prompt, not
+    completion, and must be hoisted out first.
+
+    A corrected, byte-identical-verified implementation lives on the GPU
+    server at::
+
+        /mnt/e_disk/wcte/abhishek/qwen3_8b/handoff/ensure_generation_markers.py
+
+    Swap that in before training. It also gates its early-exit on a regex
+    rather than a literal ``"{% generation %}"`` substring -- necessary
+    because the patched markers use Jinja whitespace control
+    (``{%- generation -%}``), which the substring check below would miss,
+    breaking idempotency.
+
+    Ensure `tokenizer.chat_template` wraps the assistant turn in
     `{% generation %}` / `{% endgeneration %}` markers.
 
     TRL's completion-only / assistant-only loss masking locates the
@@ -140,7 +165,8 @@ def resolve_dtype_kwarg(from_pretrained) -> str:
     return _first_supported_kwarg(from_pretrained, ["dtype", "torch_dtype"])
 
 
-def resolve_warmup_kwargs(training_cfg: dict, target=None) -> dict:
+def resolve_warmup_kwargs(training_cfg: dict, target=None,
+                          total_steps: int | None = None) -> dict:
     """Return a copy of `training_cfg` with at most one of
     `warmup_ratio` / `warmup_steps` present -- passing both to
     TrainingArguments/SFTConfig errors on some transformers/trl versions.
@@ -154,11 +180,40 @@ def resolve_warmup_kwargs(training_cfg: dict, target=None) -> dict:
     if "warmup_ratio" in cfg and "warmup_steps" in cfg:
         del cfg["warmup_steps"]
 
-    if target is not None:
-        key = "warmup_ratio" if "warmup_ratio" in cfg else (
-            "warmup_steps" if "warmup_steps" in cfg else None)
-        if key is not None:
-            _first_supported_kwarg(target, [key])  # raises if unsupported
+    if target is None:
+        return cfg
+
+    def _accepts(name: str) -> bool:
+        try:
+            _first_supported_kwarg(target, [name])
+            return True
+        except Exception:
+            return False
+
+    # transformers 5.x REMOVED warmup_ratio (verified on 5.15.0). Convert to
+    # warmup_steps rather than failing -- warmup is a schedule detail, not a
+    # reason to abort a training run.
+    if "warmup_ratio" in cfg and not _accepts("warmup_ratio"):
+        ratio = cfg.pop("warmup_ratio")
+        if _accepts("warmup_steps"):
+            if total_steps:
+                cfg["warmup_steps"] = max(1, math.ceil(ratio * total_steps))
+            else:
+                raise ValueError(
+                    "target does not accept 'warmup_ratio' (transformers 5.x "
+                    "removed it) and total_steps was not supplied, so it cannot "
+                    "be converted to 'warmup_steps'. Pass total_steps=... to "
+                    "resolve_warmup_kwargs()."
+                )
+        else:
+            logger.warning(
+                "target accepts neither 'warmup_ratio' nor 'warmup_steps'; "
+                "dropping warmup entirely (was ratio=%s).", ratio
+            )
+
+    if "warmup_steps" in cfg and not _accepts("warmup_steps"):
+        logger.warning("target does not accept 'warmup_steps'; dropping it.")
+        cfg.pop("warmup_steps")
 
     return cfg
 
