@@ -130,3 +130,54 @@ def test_empty_split_raises_instead_of_writing_a_meaningless_result(tmp_path, mo
 
     with pytest.raises(ValueError, match="test_synthetic.jsonl"):
         main(config=str(config), system="regex")
+
+
+def test_zero_shot_eval_does_not_require_train_jsonl(tmp_path, monkeypatch):
+    """With shots=0, train.jsonl should not be loaded or required to exist.
+    This allows zero-shot evaluation against held-out splits without a train split."""
+    monkeypatch.chdir(tmp_path)
+    config = _write_llm_fixture(tmp_path)
+
+    # Remove train.jsonl to verify it's not needed for shots=0
+    train_file = tmp_path / "processed" / "train.jsonl"
+    train_file.unlink()
+
+    captured = {}
+
+    def fake_build_backend(cfg):
+        captured.update(cfg)
+        return _FakeBackend()
+
+    monkeypatch.setattr("fhir_extract.eval.build_backend", fake_build_backend)
+
+    # Should succeed with shots=0 even without train.jsonl
+    main(config=str(config), system="llm", shots=0, constrained=False)
+
+    result = json.loads(
+        (tmp_path / "outputs/eval/llm_0shot_test_synthetic.json").read_text())
+    assert result["shots"] == 0
+
+
+def test_few_shot_eval_requires_train_jsonl(tmp_path, monkeypatch):
+    """With shots > 0, train.jsonl must exist; missing file should raise clear error."""
+    monkeypatch.chdir(tmp_path)
+    config = _write_llm_fixture(tmp_path)
+
+    # Remove train.jsonl
+    train_file = tmp_path / "processed" / "train.jsonl"
+    train_file.unlink()
+
+    def fake_build_backend(cfg):
+        return _FakeBackend()
+
+    monkeypatch.setattr("fhir_extract.eval.build_backend", fake_build_backend)
+
+    # Should fail with shots > 0 when train.jsonl is missing
+    with pytest.raises(FileNotFoundError) as exc_info:
+        main(config=str(config), system="llm", shots=2, constrained=False)
+
+    # Error message should contain the expected path and explain the requirement
+    error_msg = str(exc_info.value)
+    assert "train.jsonl" in error_msg
+    assert "few-shot" in error_msg.lower()
+    assert str(tmp_path / "processed" / "train.jsonl") in error_msg

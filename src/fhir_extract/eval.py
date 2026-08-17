@@ -51,7 +51,19 @@ def main(
             inference_cfg["model"] = model
         resolved_model = inference_cfg.get("model")
         backend = build_backend(inference_cfg)
-        examples = _load(Path(cfg["paths"]["processed"]) / "train.jsonl")[:shots]
+
+        # Load examples only if shots > 0
+        if shots > 0:
+            train_path = Path(cfg["paths"]["processed"]) / "train.jsonl"
+            if not train_path.exists():
+                raise FileNotFoundError(
+                    f"few-shot evaluation requires train.jsonl, but not found at: {train_path}. "
+                    f"Zero-shot evaluation (--shots 0) does not need a train split."
+                )
+            examples = _load(train_path)[:shots]
+        else:
+            examples = []
+
         preds = LLMBaseline(resolved_model, shots, constrained, examples,
                              backend=backend,
                              inference_config=inference_cfg).extract_batch(notes)
