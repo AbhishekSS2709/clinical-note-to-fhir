@@ -3,7 +3,7 @@ synthea:
   population: 3000
   output_dir: data/raw/synthea
 generation:
-  model: Qwen/Qwen3-14B-Instruct-AWQ
+  model: Qwen/Qwen3-14B-AWQ
   temperature: 0.9
   top_p: 0.95
   max_tokens: 1024

@@ -10,7 +10,7 @@ end-to-end, not just this batch's four tasks.
    confirm the parser handles real bundle shapes, not just the hand-authored fixture in
    `tests/fixtures/bundle_sample.json`.
 2. **[Task 6]** Run the note-generation smoke step (20 encounters) then the full
-   `make data` (needs vLLM + GPU; generator is `Qwen/Qwen3-14B-Instruct-AWQ` per
+   `make data` (needs vLLM + GPU; generator is `Qwen/Qwen3-14B-AWQ` per
    `configs/data.yaml`). Produces `data/interim/pairs.jsonl` and, via Task 4/8's
    `make data` split step, `data/processed/{train,val,test_synthetic}.jsonl`.
 3. **[Task 10]** Run the five baseline eval commands to populate `outputs/eval/*.json`
@@ -20,7 +20,7 @@ end-to-end, not just this batch's four tasks.
    python -m fhir_extract.eval --system llm --model Qwen/Qwen3-8B --shots 0
    python -m fhir_extract.eval --system llm --model Qwen/Qwen3-8B --shots 5
    python -m fhir_extract.eval --system llm --model Qwen/Qwen3-8B --shots 5 --constrained
-   python -m fhir_extract.eval --system llm --model Qwen/Qwen3-32B-Instruct --shots 5
+   python -m fhir_extract.eval --system llm --model Qwen/Qwen3-32B --shots 5
    ```
 4. **[Task 11 Step 1]** `nvidia-smi --query-gpu=name,memory.total --format=csv`; adjust
    `configs/train_qlora_8b.yaml` if the card is not ~24GB.
