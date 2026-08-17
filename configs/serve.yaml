@@ -1,0 +1,3 @@
+tuned_model: outputs/merged/qlora-8b
+base_model: Qwen/Qwen3-8B
+gpu_memory_utilization: 0.45   # two engines share one GPU
