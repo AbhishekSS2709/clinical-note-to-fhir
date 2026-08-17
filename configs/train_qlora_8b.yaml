@@ -1,0 +1,32 @@
+# QLoRA fine-tune config. Sizing assumes a 24GB GPU per plan §6.4.
+# BLOCKED-ON-HARDWARE: `nvidia-smi --query-gpu=name,memory.total --format=csv`
+# has not been run on this machine (no GPU). Re-confirm this sizing against
+# actual VRAM before training; drop batch size / raise gradient accumulation
+# if the card has less than 24GB.
+model_id: Qwen/Qwen3-8B
+output_dir: outputs/adapters/qlora-8b
+seed: 42
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: bfloat16
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+training:
+  learning_rate: 2.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  num_train_epochs: 3
+  max_seq_length: 2048
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 16
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  bf16: true
+  save_steps: 100
+  logging_steps: 10
+  eval_steps: 200
