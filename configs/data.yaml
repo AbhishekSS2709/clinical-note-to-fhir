@@ -9,14 +9,22 @@ generation:
   api_key: EMPTY
   structured_output_mode: json_schema
   enable_thinking: false
-  max_concurrency: 8
-  timeout: 120
+  # vLLM serves 256 concurrent by default and was measured at Running:8 /
+  # Waiting:0 / KV-cache 2.7% -- i.e. starved by this client, not busy. Decode
+  # on an 8B is memory-bandwidth-bound, so batch 64 reads the same 16GB of
+  # weights per step as batch 8 and yields ~8x the tokens.
+  max_concurrency: 64
+  timeout: 300              # per-request latency rises with queue depth
   temperature: 0.9
   top_p: 0.95
   max_tokens: 1024
   target_pairs: 25000        # over-generate ~3x; filter down to ~8000
   require_vitals: true
-  batch_size: 64
+  # Checkpoint granularity, NOT concurrency. complete() blocks until the whole
+  # chunk returns, so a chunk equal to max_concurrency drains the pool to 1
+  # request at every tail. Keeping it several times larger keeps the pool fed
+  # and amortises that barrier; a crash costs at most one chunk (resumable).
+  batch_size: 512
 inference:                   # used by eval.py's LLM baselines (--system llm)
   backend: openai
   model: Qwen/Qwen3-8B
@@ -24,8 +32,12 @@ inference:                   # used by eval.py's LLM baselines (--system llm)
   api_key: EMPTY
   structured_output_mode: json_schema
   enable_thinking: false
-  max_concurrency: 8
-  timeout: 120
+  # vLLM serves 256 concurrent by default and was measured at Running:8 /
+  # Waiting:0 / KV-cache 2.7% -- i.e. starved by this client, not busy. Decode
+  # on an 8B is memory-bandwidth-bound, so batch 64 reads the same 16GB of
+  # weights per step as batch 8 and yields ~8x the tokens.
+  max_concurrency: 64
+  timeout: 300              # per-request latency rises with queue depth
 splits:
   train: 8000
   val: 500
