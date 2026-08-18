@@ -4,54 +4,14 @@ Matching rule (documented because a fuzzy metric is only credible if its rule
 is stated): text fields match if normalised strings are equal OR rapidfuzz
 token_sort_ratio >= 88; numeric fields must match exactly to 1 decimal place.
 """
-import re
 from collections import defaultdict
 from rapidfuzz import fuzz
 
-from .faithfulness import normalise, unanchored_facts
+from .faithfulness import discriminators_conflict, normalise, unanchored_facts
 from .profile import ClinicalRecord, validate_as_fhir
 
 MATCH_THRESHOLD = 88
 RESOURCES = ("conditions", "medications", "allergies", "vitals", "procedures")
-
-_DIGIT_RE = re.compile(r"\d+")
-
-# Opposed clinical prefixes: a word starting with one and a word starting
-# with the other make the two terms clinically opposite, not variants.
-_OPPOSED_PREFIXES = (
-    ("hyper", "hypo"),
-    ("acute", "chronic"),
-    ("primary", "secondary"),
-)
-
-
-def _has_word_prefix(text: str, prefix: str) -> bool:
-    return any(w.startswith(prefix) for w in text.split())
-
-
-def _discriminators_conflict(a: str, b: str) -> bool:
-    """Block fuzzy matches between clinically distinct terms.
-
-    token_sort_ratio scores strings that differ only in a single discriminating
-    token (a digit like "type 1"/"type 2" or "stage 3"/"stage 4", laterality
-    like "left"/"right", or an opposed clinical prefix like "hyper"/"hypo")
-    as near-identical, because that token is a small share of the string. But
-    that token is exactly what makes the clinical facts different, and
-    sometimes dangerously so (e.g. type 1 vs type 2 diabetes, hyperglycemia
-    vs hypoglycemia). A fuzzy match must never paper over a difference in
-    these tokens.
-    """
-    if set(_DIGIT_RE.findall(a)) != set(_DIGIT_RE.findall(b)):
-        return True
-    a_words, b_words = set(a.split()), set(b.split())
-    if ("left" in a_words and "right" in b_words) or ("right" in a_words and "left" in b_words):
-        return True
-    for p1, p2 in _OPPOSED_PREFIXES:
-        if _has_word_prefix(a, p1) and _has_word_prefix(b, p2):
-            return True
-        if _has_word_prefix(a, p2) and _has_word_prefix(b, p1):
-            return True
-    return False
 
 
 def _keys(record: ClinicalRecord, resource: str) -> list[str]:
@@ -77,7 +37,7 @@ def _match(pred: list[str], gold: list[str], fuzzy: bool) -> tuple[int, int, int
         for i, g in enumerate(remaining):
             if p == g:
                 candidate_score = 100.0
-            elif fuzzy and not _discriminators_conflict(p, g):
+            elif fuzzy and not discriminators_conflict(p, g):
                 candidate_score = fuzz.token_sort_ratio(p, g)
                 if candidate_score < MATCH_THRESHOLD:
                     continue

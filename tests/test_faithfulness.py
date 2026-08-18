@@ -1,8 +1,9 @@
 from fhir_extract.profile import (
-    ClinicalRecord, Condition, MedicationStatement, VitalObservation,
+    ClinicalRecord, Condition, MedicationStatement, Procedure, VitalObservation,
 )
 from fhir_extract.faithfulness import (
     unanchored_facts, is_faithful, invented_facts, is_clean, normalise,
+    discriminators_conflict,
 )
 
 def test_exact_mention_is_anchored():
@@ -103,3 +104,60 @@ def test_is_clean_requires_both_no_missing_and_no_invented():
     rec = ClinicalRecord(conditions=[Condition(code_text="Asthma", clinical_status="active")])
     assert is_clean("Patient is well.", rec) is False  # missing
     assert is_clean("Patient has asthma and is on amoxicillin.", rec) is False  # invented
+
+
+# -- discriminator guard on _text_anchored --------------------------------
+# faithfulness.py's _text_anchored uses partial_ratio at a threshold (82)
+# lower than metrics.py's token_sort_ratio threshold (88), so it is the more
+# permissive of the two matchers and needs the same discriminator guard, or
+# a mislabelled pair can slip past faithfulness checking straight into
+# training data.
+
+def test_digit_discriminator_blocks_type_1_vs_type_2():
+    rec = ClinicalRecord(conditions=[Condition(code_text="Type 2 diabetes mellitus",
+                                               clinical_status="active")])
+    assert is_faithful("Patient has Type 1 diabetes mellitus.", rec) is False
+
+def test_polarity_discriminator_blocks_hyper_vs_hypo():
+    rec = ClinicalRecord(conditions=[Condition(code_text="Hyperglycemia",
+                                               clinical_status="active")])
+    assert is_faithful("Patient found to have hypoglycemia.", rec) is False
+
+def test_laterality_discriminator_blocks_left_vs_right():
+    rec = ClinicalRecord(procedures=[Procedure(code_text="left knee replacement")])
+    assert is_faithful("Patient underwent right knee replacement.", rec) is False
+
+def test_discriminators_conflict_direct():
+    assert discriminators_conflict("type 1 diabetes", "type 2 diabetes") is True
+    assert discriminators_conflict("hyperglycemia", "hypoglycemia") is True
+    assert discriminators_conflict("left knee", "right knee") is True
+    assert discriminators_conflict("acute sinusitis", "chronic sinusitis") is True
+    assert discriminators_conflict("asthma", "asthma") is False
+    assert discriminators_conflict("chronic sinusitis", "chronic sinusitis disorder") is False
+
+def test_long_note_with_unrelated_numbers_does_not_produce_spurious_conflict():
+    """A term with no digits ("Anemia", fuzzily matched against the note's
+    "anaemia") must still anchor via fuzzy match in a long, realistic note
+    full of unrelated numbers (dates, doses, vitals). Those numbers must not
+    be compared against the term just because they appear somewhere in the
+    note -- a naive term-vs-whole-note discriminator check would see the
+    term's empty digit set differ from the note's many digits and report a
+    spurious conflict on every numeric-free term in almost any real note."""
+    rec = ClinicalRecord(conditions=[Condition(code_text="Anemia",
+                                               clinical_status="active")])
+    note = (
+        "Patient is a 54 year old presenting for routine follow up seen on "
+        "2021-03-15. Vitals today are BP 148/92, heart rate 78, temperature "
+        "98.6, weight 210 lbs, height 68 in. Past medical history notable "
+        "for hypertension, well controlled on lisinopril 10mg daily started "
+        "in 2019. Last A1c was 5.4 in March. Labs revealed mild anaemia, "
+        "attributed to chronic disease. Iron studies pending. Follow up in "
+        "6 months, sooner if symptoms worsen. Continue current medications. "
+        "Recheck labs in 3 months if not at goal. Patient reports good "
+        "adherence, denies chest pain, shortness of breath, or palpitations. "
+        "Physical exam otherwise unremarkable: heart regular rate and "
+        "rhythm, lungs clear to auscultation bilaterally, no edema noted, "
+        "abdomen soft and non-tender."
+    )
+    assert unanchored_facts(note, rec) == []
+    assert is_faithful(note, rec) is True

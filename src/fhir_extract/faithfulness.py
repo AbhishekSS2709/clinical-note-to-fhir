@@ -9,6 +9,57 @@ from .profile import ClinicalRecord
 
 FUZZ_THRESHOLD = 82
 
+_DIGIT_RE = re.compile(r"\d+")
+
+# Opposed clinical prefixes: a word starting with one and a word starting
+# with the other make the two terms clinically opposite, not variants.
+_OPPOSED_PREFIXES = (
+    ("hyper", "hypo"),
+    ("acute", "chronic"),
+    ("primary", "secondary"),
+)
+
+
+def _has_word_prefix(text: str, prefix: str) -> bool:
+    return any(w.startswith(prefix) for w in text.split())
+
+
+def discriminators_conflict(a: str, b: str) -> bool:
+    """Block fuzzy matches between clinically distinct terms.
+
+    Shared by faithfulness._text_anchored and metrics._match so the two
+    modules cannot drift apart on what counts as a discriminating token --
+    that drift is exactly what let a mislabelled pair (e.g. "Type 1" vs
+    "Type 2" diabetes) pass one filter and not the other.
+
+    A fuzzy string metric scores strings that differ only in a single
+    discriminating token (a digit like "type 1"/"type 2" or "stage 3"/
+    "stage 4", laterality like "left"/"right", or an opposed clinical prefix
+    like "hyper"/"hypo") as near-identical, because that token is a small
+    share of the string. But that token is exactly what makes the clinical
+    facts different, and sometimes dangerously so (e.g. type 1 vs type 2
+    diabetes, hyperglycemia vs hypoglycemia). A fuzzy match must never paper
+    over a difference in these tokens.
+
+    `a` and `b` must already be the specific terms being compared to each
+    other -- not one term against an entire note -- since a long note will
+    contain many digits and many of these words, producing false conflicts
+    unrelated to the term at hand. See `_text_anchored` for how the matched
+    span is recovered from a note before being passed here.
+    """
+    if set(_DIGIT_RE.findall(a)) != set(_DIGIT_RE.findall(b)):
+        return True
+    a_words, b_words = set(a.split()), set(b.split())
+    if ("left" in a_words and "right" in b_words) or ("right" in a_words and "left" in b_words):
+        return True
+    for p1, p2 in _OPPOSED_PREFIXES:
+        if _has_word_prefix(a, p1) and _has_word_prefix(b, p2):
+            return True
+        if _has_word_prefix(a, p2) and _has_word_prefix(b, p1):
+            return True
+    return False
+
+
 # Clinical abbreviations that count as anchors for their expansion.
 ABBREVIATIONS: dict[str, list[str]] = {
     "hypertension": ["htn"],
@@ -50,6 +101,22 @@ def normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", " ", text.lower())
 
 
+def _expand_to_word_boundaries(text: str, start: int, end: int) -> tuple[int, int]:
+    """Grow a [start, end) span outward to the nearest spaces.
+
+    partial_ratio_alignment's window is a fixed-length slice chosen purely
+    by edit-distance score, so it commonly cuts a word in half at either
+    edge (e.g. matching "t knee replacement" instead of "right knee
+    replacement"). A half-word can hide the very token a discriminator check
+    needs to see, so the span is widened to whole words before comparison.
+    """
+    while start > 0 and text[start - 1] != " ":
+        start -= 1
+    while end < len(text) and text[end] != " ":
+        end += 1
+    return start, end
+
+
 def _text_anchored(term: str, note_norm: str) -> bool:
     term_norm = normalise(term).strip()
     if not term_norm:
@@ -65,7 +132,19 @@ def _text_anchored(term: str, note_norm: str) -> bool:
             re.search(rf"\b{re.escape(a)}\b", note_norm) for a in abbrevs
         ):
             return True
-    return fuzz.partial_ratio(term_norm, note_norm) >= FUZZ_THRESHOLD
+    # partial_ratio_alignment recovers the specific window of the note that
+    # produced the best score, so the discriminator check below compares the
+    # term against that window -- not the whole note. Comparing against the
+    # whole note would find unrelated digits/words (dates, doses, other
+    # conditions) almost anywhere in a realistic note and report spurious
+    # conflicts on every term that lacks a digit.
+    alignment = fuzz.partial_ratio_alignment(term_norm, note_norm)
+    if alignment.score < FUZZ_THRESHOLD:
+        return False
+    span_start, span_end = _expand_to_word_boundaries(
+        note_norm, alignment.dest_start, alignment.dest_end)
+    matched_span = note_norm[span_start:span_end]
+    return not discriminators_conflict(term_norm, matched_span)
 
 
 def _number_anchored(value: float, note: str) -> bool:
