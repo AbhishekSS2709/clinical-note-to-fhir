@@ -14,7 +14,8 @@ generation:
   temperature: 0.9
   top_p: 0.95
   max_tokens: 1024
-  target_pairs: 24000        # over-generate ~3x; filter down to ~8000
+  target_pairs: 25000        # over-generate ~3x; filter down to ~8000
+  require_vitals: true
   batch_size: 64
 inference:                   # used by eval.py's LLM baselines (--system llm)
   backend: openai
