@@ -298,13 +298,24 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
 
     train_ds, val_ds = load("train"), load("val")
 
-    q = cfg["quantization"]
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=q["load_in_4bit"],
-        bnb_4bit_quant_type=q["bnb_4bit_quant_type"],
-        bnb_4bit_use_double_quant=q["bnb_4bit_use_double_quant"],
-        bnb_4bit_compute_dtype=getattr(torch, q["bnb_4bit_compute_dtype"]),
-    )
+    # Quantization is optional. On a 48GB card an 8B model fits in bf16
+    # (~16GB weights + LoRA optimizer state + checkpointed activations),
+    # and plain bf16 LoRA is both faster and a few F1 points better than
+    # QLoRA -- so `quantization` absent, or load_in_4bit false, means
+    # "load the base model in bf16 and skip bitsandbytes entirely".
+    q = cfg.get("quantization") or {}
+    use_4bit = bool(q.get("load_in_4bit"))
+    compute_dtype = getattr(torch, q.get("bnb_4bit_compute_dtype", "bfloat16"))
+    if use_4bit:
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type=q["bnb_4bit_quant_type"],
+            bnb_4bit_use_double_quant=q["bnb_4bit_use_double_quant"],
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
+    else:
+        bnb = None
+    typer.echo(f"base model precision: {'4-bit nf4 (QLoRA)' if use_4bit else 'bf16 (LoRA)'}")
     peft_cfg = LoraConfig(task_type="CAUSAL_LM", **cfg["lora"])
 
     t = resolve_warmup_kwargs(cfg["training"], target=SFTConfig)
@@ -318,7 +329,7 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
     dtype_kwarg = resolve_dtype_kwarg(AutoModelForCausalLM.from_pretrained)
     model = AutoModelForCausalLM.from_pretrained(
         cfg["model_id"], quantization_config=bnb, device_map="auto",
-        **{dtype_kwarg: getattr(torch, q["bnb_4bit_compute_dtype"])},
+        **{dtype_kwarg: compute_dtype},
     )
 
     trainer = SFTTrainer(
