@@ -19,7 +19,13 @@ generation:
   top_p: 0.95
   max_tokens: 1024
   target_pairs: 25000        # over-generate ~3x; filter down to ~8000
-  require_vitals: true
+  # Which slice of the corpus this pass draws from: vitals | no_vitals |
+  # allergies. Passes are cumulative -- generate.py skips encounters already
+  # in pairs.jsonl, so raise target_pairs and re-run to append a pass.
+  #   pass 1  vitals     target 25000  (the main corpus)
+  #   pass 2  allergies  target 25600  (whole pool is only ~630 encounters)
+  #   pass 3  no_vitals  target 28600  (vitals-absent negatives)
+  encounter_filter: vitals
   # Checkpoint granularity, NOT concurrency. complete() blocks until the whole
   # chunk returns, so a chunk equal to max_concurrency drains the pool to 1
   # request at every tail. Keeping it several times larger keeps the pool fed
@@ -35,9 +41,12 @@ inference:                   # used by eval.py's LLM baselines (--system llm)
   max_concurrency: 64       # same endpoint as generation; see that block
   timeout: 300
 splits:
-  train: 8000
+  train: 8000              # NOT a cap -- train is the overflow bucket
   val: 500
   test_synthetic: 500
+  # Enriched AllergyIntolerance slice, held out separately so test_synthetic
+  # stays distribution-faithful. Counted in allergy-labelled rows, not total.
+  test_allergies: 150
 paths:
   interim: data/interim
   processed: data/processed

@@ -9,6 +9,7 @@ import typer
 import yaml
 
 from .llm_client import build_backend
+from .profile import ClinicalRecord
 from .prompts import build_prompt
 from .subset import select_subset
 from .synthea import iter_bundles, parse_bundle
@@ -27,6 +28,34 @@ def _done_ids(out_path: Path) -> set[str]:
             except Exception:
                 continue
     return done
+
+
+def encounter_matches(record: ClinicalRecord, mode: str) -> bool:
+    """Which encounters a generation pass draws from.
+
+    `vitals` and `no_vitals` partition the corpus, so a supplemental pass
+    cannot re-draw what the main pass already covered.
+
+    vitals     -- has vitals. The main corpus; only ~1/3 of Synthea encounters
+                  qualify, and they carry the numeric extraction the task is
+                  about.
+    allergies  -- has an allergy. Synthea records one per patient, so this pool
+                  is ~600 encounters corpus-wide; it exists solely to make
+                  AllergyIntolerance evaluable.
+    no_vitals  -- has NO vitals. Teaches that a note without vitals means an
+                  empty vitals list; a model trained only on vitals-present
+                  notes invents them.
+    """
+    if mode == "vitals":
+        return bool(record.vitals)
+    if mode == "no_vitals":
+        return not record.vitals
+    if mode == "allergies":
+        return bool(record.allergies)
+    raise ValueError(
+        f"unknown encounter_filter {mode!r}; expected 'vitals', 'no_vitals' "
+        "or 'allergies'"
+    )
 
 
 def _encounter_rng(seed: int, encounter_id: str) -> random.Random:
@@ -51,19 +80,19 @@ def main(config: str = "configs/data.yaml") -> None:
     typer.echo(f"Resuming: {len(done)} pairs already generated")
 
     # Build the work list deterministically.
-    # Only ~33% of Synthea encounters carry vitals. Generating notes for the
-    # rest wastes endpoint time and under-represents the numeric extraction
-    # (BP/HR) the task cares about, so skip them unless asked not to.
-    require_vitals = cfg["generation"].get("require_vitals", True)
-    skipped_no_vitals = 0
+    # Which slice of the corpus this pass draws from; see encounter_matches.
+    # Runs are cumulative -- already-generated encounters are skipped via
+    # `done`, so a supplemental pass appends to the same file.
+    mode = cfg["generation"].get("encounter_filter", "vitals")
+    skipped_filtered = 0
 
     work = []
     for bundle in iter_bundles(Path(cfg["synthea"]["output_dir"])):
         for enc in parse_bundle(bundle):
             if enc.encounter_id in done:
                 continue
-            if require_vitals and not enc.record.vitals:
-                skipped_no_vitals += 1
+            if not encounter_matches(enc.record, mode):
+                skipped_filtered += 1
                 continue
             rng = _encounter_rng(cfg["seed"], enc.encounter_id)
             subset = select_subset(enc, rng)
@@ -80,8 +109,8 @@ def main(config: str = "configs/data.yaml") -> None:
         if len(work) + len(done) >= cfg["generation"]["target_pairs"]:
             break
 
-    typer.echo(f"Generating {len(work)} notes "
-               f"(skipped {skipped_no_vitals} encounters with no vitals)")
+    typer.echo(f"Generating {len(work)} notes with encounter_filter={mode!r} "
+               f"(skipped {skipped_filtered} non-matching encounters)")
     backend = build_backend(cfg["generation"])
 
     batch = cfg["generation"]["batch_size"]

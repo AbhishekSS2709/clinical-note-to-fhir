@@ -41,3 +41,51 @@ def test_no_patient_leaks_after_fill_order_change():
     for name, rs in s.items():
         for r in rs:
             assert seen.setdefault(r["patient_id"], name) == name
+
+
+from fhir_extract.dataset import reserve_allergy_slice
+
+
+def _allergy_rows():
+    # 6 patients x 3 rows; patients p0-p3 have one allergy-labelled row each.
+    rows = []
+    for p in range(6):
+        for i in range(3):
+            label = {"allergies": [{"substance_text": "penicillin"}]} \
+                if (p < 4 and i == 0) else {"allergies": []}
+            rows.append({"patient_id": f"p{p}", "note": f"n{p}-{i}", "label": label})
+    return rows
+
+
+def test_slice_takes_whole_patients_so_none_leaks_into_the_remainder():
+    sl, rest = reserve_allergy_slice(_allergy_rows(), target_rows=2, seed=1)
+    assert {r["patient_id"] for r in sl} & {r["patient_id"] for r in rest} == set()
+
+
+def test_slice_reaches_the_target_count_of_allergy_rows():
+    sl, _ = reserve_allergy_slice(_allergy_rows(), target_rows=3, seed=1)
+    assert sum(1 for r in sl if r["label"].get("allergies")) >= 3
+
+
+def test_slice_is_capped_by_what_exists_rather_than_raising():
+    sl, rest = reserve_allergy_slice(_allergy_rows(), target_rows=99, seed=1)
+    assert sum(1 for r in sl if r["label"].get("allergies")) == 4
+    assert {r["patient_id"] for r in rest} == {"p4", "p5"}
+
+
+def test_slice_stops_early_instead_of_consuming_every_allergy_patient():
+    sl, rest = reserve_allergy_slice(_allergy_rows(), target_rows=1, seed=1)
+    assert len({r["patient_id"] for r in sl}) == 1
+    assert any(r["label"].get("allergies") for r in rest), \
+        "allergy examples must remain in train, not all be held out"
+
+
+def test_zero_target_reserves_nothing():
+    sl, rest = reserve_allergy_slice(_allergy_rows(), target_rows=0, seed=1)
+    assert sl == [] and len(rest) == 18
+
+
+def test_slice_is_deterministic_for_a_seed():
+    a, _ = reserve_allergy_slice(_allergy_rows(), target_rows=2, seed=7)
+    b, _ = reserve_allergy_slice(_allergy_rows(), target_rows=2, seed=7)
+    assert [r["note"] for r in a] == [r["note"] for r in b]
