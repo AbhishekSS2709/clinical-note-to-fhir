@@ -123,6 +123,21 @@ def resolve_dtype_kwarg(from_pretrained) -> str:
     return _first_supported_kwarg(from_pretrained, ["dtype", "torch_dtype"])
 
 
+def total_training_steps(n_examples: int, training_cfg: dict,
+                         world_size: int = 1) -> int:
+    """Optimizer steps a run will take.
+
+    Needed because transformers 5.x removed `warmup_ratio`; converting it to
+    `warmup_steps` requires knowing the total up front, and the trainer does
+    not expose that until after SFTConfig is built.
+    """
+    per_device = training_cfg.get("per_device_train_batch_size", 1)
+    accum = training_cfg.get("gradient_accumulation_steps", 1)
+    epochs = training_cfg.get("num_train_epochs", 1)
+    effective = max(1, per_device * accum * max(1, world_size))
+    return max(1, math.ceil(n_examples / effective) * math.ceil(epochs))
+
+
 def resolve_warmup_kwargs(training_cfg: dict, target=None,
                           total_steps: int | None = None) -> dict:
     """Return a copy of `training_cfg` with at most one of
@@ -318,7 +333,11 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
     typer.echo(f"base model precision: {'4-bit nf4 (QLoRA)' if use_4bit else 'bf16 (LoRA)'}")
     peft_cfg = LoraConfig(task_type="CAUSAL_LM", **cfg["lora"])
 
-    t = resolve_warmup_kwargs(cfg["training"], target=SFTConfig)
+    world_size = max(1, torch.cuda.device_count())
+    steps = total_training_steps(len(train_ds), cfg["training"], world_size)
+    typer.echo(f"planned optimizer steps: {steps} "
+               f"({len(train_ds)} examples, world_size={world_size})")
+    t = resolve_warmup_kwargs(cfg["training"], target=SFTConfig, total_steps=steps)
     loss_kwargs, fallback_collator = _configure_completion_only_loss(tokenizer)
     args = SFTConfig(
         output_dir=cfg["output_dir"], seed=cfg["seed"],

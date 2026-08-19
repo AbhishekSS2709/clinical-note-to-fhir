@@ -128,3 +128,39 @@ def test_resolve_warmup_kwargs_validates_against_target_signature():
 
     cfg = {"warmup_ratio": 0.03}
     assert resolve_warmup_kwargs(cfg, target=stub_target) == {"warmup_ratio": 0.03}
+
+
+# --- total step count (drives warmup_ratio -> warmup_steps conversion) ----
+
+from fhir_extract.train import total_training_steps
+
+
+def test_total_training_steps_multiplies_epochs_by_batches():
+    cfg = {"per_device_train_batch_size": 8, "gradient_accumulation_steps": 4,
+           "num_train_epochs": 3}
+    # 17696 examples / (8*4) = 553 batches per epoch, x3 epochs
+    assert total_training_steps(17696, cfg) == 553 * 3
+
+
+def test_total_training_steps_rounds_a_partial_batch_up():
+    cfg = {"per_device_train_batch_size": 8, "gradient_accumulation_steps": 4,
+           "num_train_epochs": 1}
+    assert total_training_steps(33, cfg) == 2
+
+
+def test_total_training_steps_accounts_for_multiple_gpus():
+    cfg = {"per_device_train_batch_size": 8, "gradient_accumulation_steps": 4,
+           "num_train_epochs": 1}
+    assert total_training_steps(6400, cfg, world_size=2) == 100
+
+
+def test_warmup_ratio_converts_once_total_steps_is_supplied():
+    # The real failure: SFTConfig on transformers 5.x rejects warmup_ratio, and
+    # the call site passed no total_steps, so the run aborted at startup.
+    # No **kwargs: _first_supported_kwarg treats a catch-all as accepting
+    # anything, so a stub with **kw would not reject warmup_ratio at all.
+    def target_without_ratio(*, warmup_steps=0, learning_rate=0.0):
+        return None
+    out = resolve_warmup_kwargs({"warmup_ratio": 0.03}, target=target_without_ratio,
+                                total_steps=1659)
+    assert out == {"warmup_steps": 50}
