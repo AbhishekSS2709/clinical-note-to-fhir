@@ -54,3 +54,34 @@ def test_llm_baseline_raises_clear_error_with_neither_backend_nor_config():
     a backend that isn't installed. See docs/decisions/openai-backend.md."""
     with pytest.raises(ValueError, match="backend"):
         LLMBaseline(model="Qwen/Qwen3-8B")
+
+
+# --- reasoning-block tolerance -------------------------------------------
+
+def test_parse_record_accepts_a_leading_empty_think_block():
+    # Qwen3's chat template injects <think></think> INSIDE the assistant turn,
+    # so a model fine-tuned through that template emits it before the JSON.
+    # Without this, every fine-tuned prediction fails to parse and the model
+    # scores 0.0 while actually working.
+    rec, ok = parse_record('<think>\n\n</think>\n\n{"conditions": [], '
+                           '"medications": [], "allergies": [], "vitals": [], '
+                           '"procedures": []}')
+    assert ok and rec.conditions == []
+
+
+def test_parse_record_accepts_a_think_block_with_content():
+    rec, ok = parse_record('<think>The note mentions asthma.</think>\n'
+                           '{"conditions": [{"code_text": "asthma", '
+                           '"clinical_status": "active"}]}')
+    assert ok and rec.conditions[0].code_text == "asthma"
+
+
+def test_parse_record_accepts_a_think_block_wrapped_in_a_code_fence():
+    rec, ok = parse_record('<think></think>\n```json\n{"conditions": []}\n```')
+    assert ok
+
+
+def test_parse_record_still_reports_failure_on_genuinely_broken_output():
+    # Leniency must not turn unparseable output into a silent empty record.
+    rec, ok = parse_record("<think>I cannot answer</think> sorry, no JSON here")
+    assert not ok and rec.conditions == []

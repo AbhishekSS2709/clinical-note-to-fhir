@@ -52,14 +52,30 @@ def _strip_json_fence(text: str) -> str:
     return match.group(1).strip() if match else text
 
 
+_THINK_RE = re.compile(r"\A\s*(?:<think>.*?</think>\s*)+", re.DOTALL)
+
+
+def _strip_reasoning_block(text: str) -> str:
+    """Drop leading <think>...</think> blocks.
+
+    Qwen3 is a hybrid reasoning model and its chat template emits the think
+    tags INSIDE the assistant turn, so a model fine-tuned through that
+    template reproduces them ahead of the JSON. Stripping them here keeps the
+    same parser honest for baselines and fine-tuned alike.
+    """
+    return _THINK_RE.sub("", text, count=1)
+
+
 def parse_record(text: str) -> tuple[ClinicalRecord, bool]:
     """Parse a completion into a ClinicalRecord. Tries the raw text first,
     then with a markdown code fence stripped -- some servers wrap JSON output
-    in ```json ... ``` even under constrained decoding. A fence-stripped
-    parse still counts as success; only genuinely unparseable output counts
-    as a parse failure.
+    in ```json ... ``` even under constrained decoding -- then with a leading
+    reasoning block stripped, then both. A recovered parse still counts as
+    success; only genuinely unparseable output counts as a parse failure.
     """
-    for candidate in (text, _strip_json_fence(text)):
+    stripped = _strip_reasoning_block(text)
+    for candidate in (text, _strip_json_fence(text), stripped,
+                      _strip_json_fence(stripped)):
         try:
             return ClinicalRecord.model_validate_json(candidate), True
         except Exception:
