@@ -25,6 +25,7 @@ def main(
     model: Optional[str] = None,
     shots: int = 0,
     constrained: bool = False,
+    schema_hint: bool = True,
 ) -> None:
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     split_path = Path(cfg["paths"]["processed"]) / f"{split}.jsonl"
@@ -64,9 +65,12 @@ def main(
         else:
             examples = []
 
+        # schema_hint=False for the fine-tuned model: it must be evaluated on
+        # the prompt it was trained on, which carries no schema block.
         preds = LLMBaseline(resolved_model, shots, constrained, examples,
                              backend=backend,
-                             inference_config=inference_cfg).extract_batch(notes)
+                             inference_config=inference_cfg,
+                             schema_hint=schema_hint).extract_batch(notes)
 
     results = aggregate([score(p, g, n, parsed=parsed)
                          for (p, parsed), g, n in zip(preds, golds, notes)])
@@ -74,6 +78,7 @@ def main(
     results["model"] = resolved_model if system != "regex" else None
     results["shots"] = shots
     results["constrained"] = constrained
+    results["schema_hint"] = schema_hint
     results["split"] = split
 
     out = Path("outputs/eval"); out.mkdir(parents=True, exist_ok=True)

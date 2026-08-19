@@ -43,6 +43,26 @@ Note:
 
 JSON:"""
 
+def schema_instruction() -> str:
+    """EXTRACT_INSTRUCTION plus the target JSON schema.
+
+    Baselines are otherwise asked to guess a field structure they were never
+    shown. The base model answers with `vitals` as a dict keyed by
+    "blood_pressure" and `conditions` as bare strings, which fails validation
+    and scores 0.0 -- a strawman, not a baseline. The fine-tuned model learns
+    the structure from 17k examples, so a fair comparison at least states it.
+
+    Rendered from the Pydantic model so it cannot drift from the profile.
+    """
+    # Braces doubled: the prompt is later run through str.format(note=...),
+    # which would otherwise read the schema's own braces as fields.
+    schema = (json.dumps(ClinicalRecord.model_json_schema(), separators=(",", ":"))
+              .replace("{", "{{").replace("}", "}}"))
+    head, _, tail = EXTRACT_INSTRUCTION.partition("\nNote:")
+    return (head + "\n\nThe JSON must validate against this schema:\n"
+            + schema + "\nNote:" + tail)
+
+
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", re.DOTALL)
 
 
@@ -98,7 +118,8 @@ class LLMBaseline:
     def __init__(self, model: str = "", shots: int = 0, constrained: bool = False,
                  examples: list[dict] | None = None,
                  backend: LLMBackend | None = None,
-                 inference_config: dict | None = None):
+                 inference_config: dict | None = None,
+                 schema_hint: bool = True):
         if backend is None and inference_config is None:
             raise ValueError(
                 "LLMBaseline needs either backend=<LLMBackend> or "
@@ -115,13 +136,17 @@ class LLMBaseline:
         self.temperature = icfg.get("temperature", 0.0)
         self.top_p = icfg.get("top_p", 1.0)
         self.max_tokens = icfg.get("max_tokens", 1024)
+        self.schema_hint = schema_hint
 
     def _prompt(self, note: str) -> str:
+        # The fine-tuned model must see the prompt it was trained on, which
+        # carries no schema block -- hence schema_hint=False for that system.
+        template = schema_instruction() if self.schema_hint else EXTRACT_INSTRUCTION
         prefix = ""
         for ex in self.examples[: self.shots]:
-            prefix += EXTRACT_INSTRUCTION.format(note=ex["note"])
+            prefix += template.format(note=ex["note"])
             prefix += json.dumps(ex["label"]) + "\n\n"
-        return prefix + EXTRACT_INSTRUCTION.format(note=note)
+        return prefix + template.format(note=note)
 
     def extract_batch(self, notes: list[str]) -> list[tuple[ClinicalRecord, bool]]:
         json_schema = ClinicalRecord.model_json_schema() if self.constrained else None

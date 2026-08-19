@@ -85,3 +85,42 @@ def test_parse_record_still_reports_failure_on_genuinely_broken_output():
     # Leniency must not turn unparseable output into a silent empty record.
     rec, ok = parse_record("<think>I cannot answer</think> sorry, no JSON here")
     assert not ok and rec.conditions == []
+
+
+# --- baseline fairness: the schema must be in the prompt ------------------
+
+class _StubBackend:
+    """Minimal LLMBackend: records prompts, returns canned replies."""
+
+    def __init__(self, replies):
+        self.replies = replies
+        self.prompts = []
+
+    def complete(self, prompts, **kw):
+        self.prompts.extend(prompts)
+        return list(self.replies) + [""] * (len(prompts) - len(self.replies))
+
+
+def test_baseline_prompt_states_the_schema_by_default():
+    # The fine-tuned model learns the field structure from 17k examples. A
+    # baseline that is only told the five key NAMES invents its own shape
+    # (vitals as a dict, conditions as strings) and scores 0.0 -- a strawman.
+    b = LLMBaseline("m", backend=_StubBackend([]))
+    prompt = b._prompt("Patient is well.")
+    assert "loinc_code" in prompt and "clinical_status" in prompt
+
+
+def test_schema_hint_can_be_disabled_to_match_the_training_prompt():
+    # The fine-tuned model must be evaluated on the prompt it was trained on,
+    # which carries no schema block.
+    from fhir_extract.baselines import EXTRACT_INSTRUCTION
+    b = LLMBaseline("m", backend=_StubBackend([]), schema_hint=False)
+    assert b._prompt("Patient is well.") == \
+        EXTRACT_INSTRUCTION.format(note="Patient is well.")
+
+
+def test_schema_hint_describes_every_profiled_resource():
+    b = LLMBaseline("m", backend=_StubBackend([]))
+    prompt = b._prompt("n")
+    for key in ("conditions", "medications", "allergies", "vitals", "procedures"):
+        assert key in prompt
