@@ -164,3 +164,37 @@ def test_warmup_ratio_converts_once_total_steps_is_supplied():
     out = resolve_warmup_kwargs({"warmup_ratio": 0.03}, target=target_without_ratio,
                                 total_steps=1659)
     assert out == {"warmup_steps": 50}
+
+
+# --- SFTConfig key compatibility -----------------------------------------
+
+from fhir_extract.train import resolve_max_length_kwarg, unsupported_kwargs
+
+
+def _sft_like(*, max_length=0, learning_rate=0.0, warmup_steps=0):
+    """Stands in for trl 1.x SFTConfig: max_length, no max_seq_length."""
+    return None
+
+
+def test_max_seq_length_is_renamed_for_trl_1x():
+    out = resolve_max_length_kwarg({"max_seq_length": 2048}, target=_sft_like)
+    assert out == {"max_length": 2048}
+
+
+def test_max_seq_length_is_left_alone_when_the_target_accepts_it():
+    def old_sft(*, max_seq_length=0):
+        return None
+    assert resolve_max_length_kwarg({"max_seq_length": 2048}, target=old_sft) \
+        == {"max_seq_length": 2048}
+
+
+def test_unsupported_kwargs_reports_every_bad_key_at_once():
+    # Discovering these one per launch costs a model load each time; the
+    # pre-flight must list all of them in one raise.
+    bad = unsupported_kwargs(
+        {"learning_rate": 1e-4, "bogus_a": 1, "bogus_b": 2}, target=_sft_like)
+    assert bad == ["bogus_a", "bogus_b"]
+
+
+def test_unsupported_kwargs_is_empty_for_a_clean_config():
+    assert unsupported_kwargs({"learning_rate": 1e-4}, target=_sft_like) == []

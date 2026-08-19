@@ -138,6 +138,38 @@ def total_training_steps(n_examples: int, training_cfg: dict,
     return max(1, math.ceil(n_examples / effective) * math.ceil(epochs))
 
 
+def resolve_max_length_kwarg(training_cfg: dict, target=None) -> dict:
+    """TRL 1.x renamed `SFTConfig.max_seq_length` to `max_length`.
+
+    Emit whichever name the installed version accepts rather than pinning TRL,
+    so the same config works either side of the rename.
+    """
+    cfg = dict(training_cfg)
+    if target is None or "max_seq_length" not in cfg:
+        return cfg
+    name = _first_supported_kwarg(target, ["max_seq_length", "max_length"])
+    if name != "max_seq_length":
+        cfg[name] = cfg.pop("max_seq_length")
+    return cfg
+
+
+def unsupported_kwargs(training_cfg: dict, target) -> list[str]:
+    """Config keys `target` will reject, all of them, in one list.
+
+    A pre-flight rather than a discovery loop: each unsupported key otherwise
+    surfaces as its own TypeError after a multi-minute model load.
+    """
+    import inspect
+    try:
+        params = inspect.signature(target.__init__ if inspect.isclass(target)
+                                   else target).parameters
+    except (TypeError, ValueError):
+        return []
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return []
+    return sorted(k for k in training_cfg if k not in params)
+
+
 def resolve_warmup_kwargs(training_cfg: dict, target=None,
                           total_steps: int | None = None) -> dict:
     """Return a copy of `training_cfg` with at most one of
@@ -338,6 +370,14 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
     typer.echo(f"planned optimizer steps: {steps} "
                f"({len(train_ds)} examples, world_size={world_size})")
     t = resolve_warmup_kwargs(cfg["training"], target=SFTConfig, total_steps=steps)
+    t = resolve_max_length_kwarg(t, target=SFTConfig)
+    rejected = unsupported_kwargs(t, SFTConfig)
+    if rejected:
+        raise ValueError(
+            f"SFTConfig (trl {__import__('trl').__version__}) does not accept "
+            f"{rejected} from the config's `training` block. Rename or remove "
+            "them; discovering these one per launch costs a model load each."
+        )
     loss_kwargs, fallback_collator = _configure_completion_only_loss(tokenizer)
     args = SFTConfig(
         output_dir=cfg["output_dir"], seed=cfg["seed"],
