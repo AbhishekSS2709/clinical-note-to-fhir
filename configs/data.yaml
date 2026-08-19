@@ -46,7 +46,14 @@ splits:
   test_synthetic: 500
   # Enriched AllergyIntolerance slice, held out separately so test_synthetic
   # stays distribution-faithful. Counted in allergy-labelled rows, not total.
-  test_allergies: 150
+  #
+  # Sized against the CEILING, not against what makes a comfortable test set:
+  # Synthea yields 634 allergy encounters corpus-wide (one per patient), which
+  # survive subsetting and faithfulness filtering as ~165 labelled rows. At 150
+  # the slice consumed 91% of them and left 15 to train on. 60 leaves ~105 for
+  # training -- both halves thin, which is the honest position for this
+  # resource type and must be reported with n rather than as a bare F1.
+  test_allergies: 60
 paths:
   interim: data/interim
   processed: data/processed
