@@ -76,8 +76,11 @@ def test_slice_is_capped_by_what_exists_rather_than_raising():
 def test_slice_stops_early_instead_of_consuming_every_allergy_patient():
     sl, rest = reserve_allergy_slice(_allergy_rows(), target_rows=1, seed=1)
     assert len({r["patient_id"] for r in sl}) == 1
-    assert any(r["label"].get("allergies") for r in rest), \
-        "allergy examples must remain in train, not all be held out"
+    # "any allergy row remains" is too weak: on the real corpus a target of
+    # 150 against 165 available rows passed that check while leaving 15 rows
+    # to train on. Require a real majority to survive for training.
+    remaining = sum(1 for r in rest if r["label"].get("allergies"))
+    assert remaining >= 3, f"only {remaining} allergy rows left for training"
 
 
 def test_zero_target_reserves_nothing():
