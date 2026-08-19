@@ -31,6 +31,7 @@ training:
   gradient_checkpointing: true
   optim: paged_adamw_8bit
   bf16: true
+  report_to: none        # set to wandb only where it is installed
   save_steps: 100
   logging_steps: 10
   eval_strategy: steps

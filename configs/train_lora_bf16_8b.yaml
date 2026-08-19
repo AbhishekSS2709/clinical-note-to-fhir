@@ -50,6 +50,7 @@ training:
   optim: adamw_torch          # paged_adamw_8bit exists to save VRAM under
                               # 4-bit; unnecessary here and slightly worse
   bf16: true
+  report_to: none        # set to wandb only where it is installed
   save_steps: 100
   logging_steps: 10
   eval_strategy: steps

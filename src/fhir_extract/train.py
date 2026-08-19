@@ -379,9 +379,15 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
             "them; discovering these one per launch costs a model load each."
         )
     loss_kwargs, fallback_collator = _configure_completion_only_loss(tokenizer)
+    # Reporting backend comes from config. Default "none": wandb is not
+    # installed on every box, and an unconditional report_to="wandb" either
+    # raises at startup (missing package) or hangs at step 0 waiting for an
+    # API key on a headless machine. Loss history is still written to the log
+    # and to trainer_state.json in output_dir.
+    t.setdefault("report_to", "none")
     args = SFTConfig(
         output_dir=cfg["output_dir"], seed=cfg["seed"],
-        report_to="wandb", run_name=Path(cfg["output_dir"]).name,
+        run_name=Path(cfg["output_dir"]).name,
         save_total_limit=3, packing=False, **loss_kwargs, **t,
     )
 
