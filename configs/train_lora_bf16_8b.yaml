@@ -40,7 +40,12 @@ training:
   lr_scheduler_type: cosine
   warmup_ratio: 0.03          # transformers 5.x removed this key; train.py
                               # converts it to warmup_steps automatically
-  num_train_epochs: 3
+  # 1, not 3. Measured on the A6000: 31 s/optimizer-step at effective batch
+  # 32, so 3 epochs over 17,696 examples is 1,659 steps ~ 14 hours. One epoch
+  # is 553 steps ~ 4.8h, which fits the available window, and 17.7k examples
+  # is comfortably enough for a single-epoch LoRA SFT run. Raise it only with
+  # the wall-clock to spare.
+  num_train_epochs: 1
   max_seq_length: 2048
   # 48GB allows a real per-device batch. Effective batch stays 32 to match
   # the QLoRA ablation, so the two runs differ ONLY in precision.
