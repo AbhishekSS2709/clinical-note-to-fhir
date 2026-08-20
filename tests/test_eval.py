@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from fhir_extract.eval import main
+from fhir_extract.eval import main, result_tag
 
 
 def _write_fixture(tmp_path: Path) -> Path:
@@ -89,7 +89,9 @@ def test_eval_llm_system_builds_backend_from_inference_config(tmp_path, monkeypa
     assert captured["model"] == "Qwen/Qwen3-8B"
 
     result = json.loads(
-        (tmp_path / "outputs/eval/llm_0shot_test_synthetic.json").read_text())
+        (tmp_path / "outputs/eval" /
+         (result_tag("llm", "Qwen/Qwen3-8B", 0, False, True, "test_synthetic")
+          + ".json")).read_text())
     assert result["model"] == "Qwen/Qwen3-8B"
 
 
@@ -113,7 +115,9 @@ def test_model_cli_option_overrides_inference_model(tmp_path, monkeypatch):
     assert captured["model"] == "outputs/merged/qlora-8b"
 
     result = json.loads(
-        (tmp_path / "outputs/eval/llm_0shot_test_synthetic.json").read_text())
+        (tmp_path / "outputs/eval" /
+         (result_tag("llm", "outputs/merged/qlora-8b", 0, False, True,
+                     "test_synthetic") + ".json")).read_text())
     assert result["model"] == "outputs/merged/qlora-8b"
 
 
@@ -154,7 +158,9 @@ def test_zero_shot_eval_does_not_require_train_jsonl(tmp_path, monkeypatch):
     main(config=str(config), system="llm", shots=0, constrained=False)
 
     result = json.loads(
-        (tmp_path / "outputs/eval/llm_0shot_test_synthetic.json").read_text())
+        (tmp_path / "outputs/eval" /
+         (result_tag("llm", "Qwen/Qwen3-8B", 0, False, True, "test_synthetic")
+          + ".json")).read_text())
     assert result["shots"] == 0
 
 
@@ -181,3 +187,32 @@ def test_few_shot_eval_requires_train_jsonl(tmp_path, monkeypatch):
     assert "train.jsonl" in error_msg
     assert "few-shot" in error_msg.lower()
     assert str(tmp_path / "processed" / "train.jsonl") in error_msg
+
+
+# --- result filenames must not collide across systems --------------------
+
+from fhir_extract.eval import result_tag
+
+
+def test_tag_separates_models_evaluated_on_the_same_split():
+    # The fine-tuned run overwrote the base baseline because the tag carried
+    # only system/shots/split -- both were "llm_0shot_test_synthetic".
+    base = result_tag("llm", "Qwen/Qwen3-8B", 0, False, True, "test_synthetic")
+    ft = result_tag("llm", "fhir-lora", 0, False, False, "test_synthetic")
+    assert base != ft
+
+
+def test_tag_is_filesystem_safe():
+    tag = result_tag("llm", "Qwen/Qwen3-8B", 0, False, True, "test_synthetic")
+    assert "/" not in tag and " " not in tag
+
+
+def test_tag_records_schema_hint_and_constrained():
+    plain = result_tag("llm", "m", 0, False, True, "s")
+    noschema = result_tag("llm", "m", 0, False, False, "s")
+    constrained = result_tag("llm", "m", 0, True, True, "s")
+    assert len({plain, noschema, constrained}) == 3
+
+
+def test_regex_tag_needs_no_model():
+    assert "regex" in result_tag("regex", None, 0, False, True, "test_synthetic")

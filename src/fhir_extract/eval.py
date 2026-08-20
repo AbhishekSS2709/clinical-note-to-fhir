@@ -1,5 +1,6 @@
 """Eval harness. Every number in the README comes from here."""
 import json
+import re
 from pathlib import Path
 from typing import Optional
 import typer
@@ -15,6 +16,26 @@ app = typer.Typer()
 
 def _load(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.open(encoding="utf-8")]
+
+
+def result_tag(system: str, model: str | None, shots: int, constrained: bool,
+               schema_hint: bool, split: str) -> str:
+    """Filename stem for a result JSON.
+
+    Must distinguish every axis that changes the number, or runs silently
+    overwrite each other: the fine-tuned and base models were both written
+    to "llm_0shot_test_synthetic" and only the last one survived.
+    """
+    parts = [system]
+    if system != 'regex' and model:
+        parts.append(re.sub(r'[^A-Za-z0-9._-]', '-', model))
+    parts.append(str(shots) + 'shot')
+    if constrained:
+        parts.append('constrained')
+    if not schema_hint:
+        parts.append('noschema')
+    parts.append(split)
+    return '_'.join(parts)
 
 
 @app.command()
@@ -82,7 +103,7 @@ def main(
     results["split"] = split
 
     out = Path("outputs/eval"); out.mkdir(parents=True, exist_ok=True)
-    tag = f"{system}_{shots}shot{'_constrained' if constrained else ''}_{split}"
+    tag = result_tag(system, resolved_model, shots, constrained, schema_hint, split)
     (out / f"{tag}.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     typer.echo(json.dumps(results, indent=2))
 
