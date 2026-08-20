@@ -113,3 +113,37 @@ def test_unparsed_prediction_is_never_schema_valid():
     gold = ClinicalRecord()
     s = score(rec, gold, "note", parsed=False)
     assert s["schema_valid"] is False
+
+
+# --- restricting which resource types are scored --------------------------
+
+def test_score_can_restrict_to_a_subset_of_resources():
+    from fhir_extract.metrics import score, RESOURCES
+    from fhir_extract.profile import ClinicalRecord, Condition, VitalObservation
+    pred = ClinicalRecord(
+        conditions=[Condition(code_text="asthma", clinical_status="active")],
+        vitals=[VitalObservation(loinc_code="8867-4", value=72, unit="/min")])
+    gold = ClinicalRecord(
+        conditions=[Condition(code_text="asthma", clinical_status="active")])
+    # ELMTEX annotates no vitals, but its reports mention them. Scored whole,
+    # a correct vital becomes a false positive.
+    full = score(pred, gold, "asthma, HR 72", parsed=True)
+    assert full["fp"] == 1
+    restricted = score(pred, gold, "asthma, HR 72", parsed=True,
+                       resources=("conditions", "medications", "procedures"))
+    assert restricted["fp"] == 0 and restricted["tp"] == 1
+
+
+def test_score_defaults_to_every_resource():
+    from fhir_extract.metrics import score, RESOURCES
+    from fhir_extract.profile import ClinicalRecord
+    out = score(ClinicalRecord(), ClinicalRecord(), "", parsed=True)
+    assert set(out["per_resource"]) == set(RESOURCES)
+
+
+def test_restricted_score_omits_unscored_types_entirely():
+    from fhir_extract.metrics import score
+    from fhir_extract.profile import ClinicalRecord
+    out = score(ClinicalRecord(), ClinicalRecord(), "", parsed=True,
+                resources=("conditions",))
+    assert set(out["per_resource"]) == {"conditions"}

@@ -52,10 +52,18 @@ def _match(pred: list[str], gold: list[str], fuzzy: bool) -> tuple[int, int, int
     return tp, len(pred) - tp, len(remaining)
 
 
-def score(pred: ClinicalRecord, gold: ClinicalRecord, note: str, parsed: bool = True) -> dict:
+def score(pred: ClinicalRecord, gold: ClinicalRecord, note: str,
+          parsed: bool = True, resources: tuple[str, ...] = RESOURCES) -> dict:
+    """Score one prediction. `resources` restricts which types count.
+
+    Restriction exists for corpora that annotate only part of the
+    profile: ELMTEX has no vitals or allergies, yet its reports mention
+    vitals, so scoring the full profile would charge a false positive
+    for every vital the model correctly extracted.
+    """
     per_resource: dict[str, dict] = {}
     tp = fp = fn = 0
-    for resource in RESOURCES:
+    for resource in resources:
         fuzzy = resource != "vitals"
         r_tp, r_fp, r_fn = _match(_keys(pred, resource), _keys(gold, resource), fuzzy)
         per_resource[resource] = {"tp": r_tp, "fp": r_fp, "fn": r_fn}

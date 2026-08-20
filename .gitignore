@@ -12,3 +12,4 @@ wandb/
 *.safetensors
 synthea/
 .env
+data/raw/elmtex/

@@ -8,7 +8,7 @@ import yaml
 
 from .baselines import LLMBaseline, regex_extract
 from .llm_client import build_backend
-from .metrics import aggregate, score
+from .metrics import RESOURCES, aggregate, score
 from .profile import ClinicalRecord
 
 app = typer.Typer()
@@ -47,6 +47,7 @@ def main(
     shots: int = 0,
     constrained: bool = False,
     schema_hint: bool = True,
+    resources: str = "",
 ) -> None:
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     split_path = Path(cfg["paths"]["processed"]) / f"{split}.jsonl"
@@ -93,13 +94,20 @@ def main(
                              inference_config=inference_cfg,
                              schema_hint=schema_hint).extract_batch(notes)
 
-    results = aggregate([score(p, g, n, parsed=parsed)
+    # Restrict scoring for corpora that annotate only part of the profile
+    # (ELMTEX has no vitals/allergies); default is every resource type.
+    scored = tuple(r.strip() for r in resources.split(",") if r.strip()) or RESOURCES
+    unknown = [r for r in scored if r not in RESOURCES]
+    if unknown:
+        raise ValueError(f"unknown resource type(s) {unknown}; expected from {list(RESOURCES)}")
+    results = aggregate([score(p, g, n, parsed=parsed, resources=scored)
                          for (p, parsed), g, n in zip(preds, golds, notes)])
     results["system"] = system
     results["model"] = resolved_model if system != "regex" else None
     results["shots"] = shots
     results["constrained"] = constrained
     results["schema_hint"] = schema_hint
+    results["scored_resources"] = list(scored)
     results["split"] = split
 
     out = Path("outputs/eval"); out.mkdir(parents=True, exist_ok=True)
