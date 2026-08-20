@@ -95,3 +95,50 @@ Even on `conditions,procedures`, ELMTEX labels are free-text names with no
 clinical status, dates or codes. An ELMTEX score is **name-level** and is not
 comparable in kind to the synthetic-split numbers, which match structured fields.
 Report the two separately; never in the same column.
+
+## The real finding: degenerate repetition under distribution shift
+
+The truncation in §2 above is not a budget problem. Measured on 16 ELMTEX
+reports, greedy decoding, identical prompts:
+
+| model | max_tokens | hit `length` | parsed | median tokens |
+|---|---:|---:|---:|---:|
+| base | 2048 | 0 | 16/16 | 623 |
+| base | 4096 | 0 | 15/16 | 623 |
+| fine-tuned | 2048 | 10 | 5/16 | 2048 |
+| fine-tuned | 4096 | 10 | 5/16 | 4096 |
+
+The base model terminates at a median of 623 tokens. The fine-tuned model
+consumes **whatever budget it is given** on 10 of 16 reports, emitting the same
+entries repeatedly:
+
+```
+... "medication_text": "100 MG/ML Hydrocortisone Injectable Powder/Injection",
+    "dosage": {"dose": null, "unit": null, "route": null, "frequency": null},
+    "status": "active"}, {"medication_text": "100 MG/ML Hydrocortisone ...
+```
+
+Neither a larger budget (4096 changes nothing) nor constrained decoding
+(`response_format` json_schema: 7/16 parsed vs 8/16 unconstrained) fixes it —
+the loop occurs *inside* the arrays, which the schema permits.
+
+**Conclusion: the model as trained is not deployable on real clinical reports.**
+The synthetic corpus has a median of 6 facts per label and a rigid, uniform
+structure; real reports carry ~12. The model learned the surface form of the
+generator — full RxNorm display names, SNOMED `(finding)` tags, every optional
+field spelled out as `null`, an always-present `onset_date` it invents — but
+never learned to terminate a long list.
+
+This is the reason to run an external evaluation at all. The synthetic split
+reports micro F1 0.996; on real text the same model is worse than the base model
+it was fine-tuned from.
+
+### What a v2 would change
+
+- Train on denser labels; the current corpus never shows a list longer than a
+  handful of items.
+- Mix in real annotated notes — ELMTEX ships a 54k-example training split.
+- Apply a repetition penalty at inference (untested here; would treat the
+  symptom, not the cause).
+- Report external validation alongside in-distribution numbers from the start,
+  not at the end.
