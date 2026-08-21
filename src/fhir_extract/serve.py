@@ -12,13 +12,23 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .baselines import EXTRACT_INSTRUCTION, parse_record
+from .baselines import EXTRACT_INSTRUCTION, parse_record, schema_instruction
 from .llm_client import build_backend
 from .profile import ClinicalRecord
 
 logger = logging.getLogger(__name__)
 
-cfg = yaml.safe_load(Path("configs/serve.yaml").read_text(encoding="utf-8"))
+def _repo_path(relative: str) -> Path:
+    """Resolve a repo-relative path against this module, not the CWD.
+
+    serve.py read configs/serve.yaml and mounted web/ relative to the working
+    directory at import time, so importing it from anywhere but the repo root
+    raised (deferred finding M4).
+    """
+    return Path(__file__).resolve().parents[2] / relative
+
+
+cfg = yaml.safe_load(_repo_path("configs/serve.yaml").read_text(encoding="utf-8"))
 app = FastAPI(title="Clinical Note to FHIR")
 
 _backends: dict[str, object] = {}
@@ -95,10 +105,23 @@ class ExtractRequest(BaseModel):
     note: str
 
 
+def _prompt_for(model_id: str, note: str, tuned_id: str) -> str:
+    """The tuned model gets the prompt it was trained on; the base model gets
+    the schema as well.
+
+    Without this the base pane shows a model inventing its own field names --
+    a failure caused by the prompt, not by the model, which makes the
+    side-by-side dishonest in our favour.
+    """
+    if model_id == tuned_id:
+        return EXTRACT_INSTRUCTION.format(note=note)
+    return schema_instruction().format(note=note)
+
+
 def _run(model_id: str, note: str) -> tuple[dict, float]:
     start = time.perf_counter()
     texts = _backend_for(model_id).complete(
-        [EXTRACT_INSTRUCTION.format(note=note)],
+        [_prompt_for(model_id, note, _TUNED_MODEL)],
         temperature=0.0, top_p=1.0, max_tokens=1024,
         json_schema=ClinicalRecord.model_json_schema(),
     )
@@ -121,4 +144,4 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-app.mount("/", StaticFiles(directory="web", html=True), name="web")
+app.mount("/", StaticFiles(directory=str(_repo_path("web")), html=True), name="web")

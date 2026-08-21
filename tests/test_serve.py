@@ -106,3 +106,29 @@ def test_backend_for_openai_builds_separate_backend_per_model_id(monkeypatch):
     # cached on repeat call, no new backend built
     serve._backend_for("fhir-tuned")
     assert len(built) == 2
+
+
+# --- demo fairness + path resolution -------------------------------------
+
+def test_prompt_for_gives_the_base_model_the_schema():
+    # The base model has never seen our field structure. Sending it the bare
+    # training prompt makes it invent its own shape, so the side-by-side would
+    # show the base failing for the wrong reason.
+    from fhir_extract.serve import _prompt_for
+    base = _prompt_for("qwen3-8b-base", "HR 72", tuned_id="fhir-lora")
+    assert "loinc_code" in base
+
+
+def test_prompt_for_gives_the_tuned_model_its_training_prompt():
+    from fhir_extract.serve import _prompt_for
+    from fhir_extract.baselines import EXTRACT_INSTRUCTION
+    tuned = _prompt_for("fhir-lora", "HR 72", tuned_id="fhir-lora")
+    assert tuned == EXTRACT_INSTRUCTION.format(note="HR 72")
+
+
+def test_repo_paths_do_not_depend_on_the_working_directory():
+    # serve.py resolved configs/serve.yaml and web/ against CWD at import, so
+    # importing it from anywhere but the repo root raised (deferred M4).
+    from fhir_extract.serve import _repo_path
+    assert _repo_path("configs/serve.yaml").is_absolute()
+    assert _repo_path("configs/serve.yaml").exists()

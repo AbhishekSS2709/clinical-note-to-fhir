@@ -1,14 +1,21 @@
-backend: vllm                  # openai | vllm
+backend: openai                # openai | vllm
 
-# --- backend: openai ---  two model ids, one shared endpoint
-base_url: http://10.24.6.107:8003/v1
+# --- backend: openai ---  two model ids, one shared endpoint.
+# This is the path that works: vLLM serves the base weights and the LoRA
+# adapter from ONE process, so the side-by-side comparison shares a server,
+# sampling settings and parser. Bring it up with:
+#
+#   vllm serve $BASE --served-model-name qwen3-8b-base #     --enable-lora --max-lora-rank 16 #     --lora-modules fhir-lora=outputs/adapters/lora-bf16-8b/checkpoint-553 #     --port 8004 --max-model-len 16384
+base_url: http://127.0.0.1:8004/v1
 api_key: EMPTY
 structured_output_mode: json_schema
 enable_thinking: false
-openai_tuned_model: fhir-tuned      # served via: vllm serve <base> --lora-modules fhir-tuned=outputs/adapters/qlora-8b
-openai_base_model: Qwen/Qwen3-8B    # must match an id from GET <base_url>/models
+openai_tuned_model: fhir-lora      # the adapter, prompted as it was trained
+openai_base_model: qwen3-8b-base   # must match an id from GET <base_url>/models
 
-# --- backend: vllm ---  two in-process engines
-tuned_model: outputs/merged/qlora-8b
+# --- backend: vllm ---  two in-process engines.
+# Kept for reference but NOT recommended: vLLM V1 does not reliably support
+# two engines in one process, and --enable-lora makes it unnecessary.
+tuned_model: outputs/merged/lora-bf16-8b
 base_model: Qwen/Qwen3-8B
-gpu_memory_utilization: 0.45   # two engines share one GPU (vllm backend only)
+gpu_memory_utilization: 0.45
