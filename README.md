@@ -195,7 +195,19 @@ The diagnosis predicted a fix, so it was tested. v2 is the same recipe — same 
 
 The repetition loop is gone entirely — 16/16 reports terminate, at a median of 412 tokens, *more* concise than the base model's 623. Schema validity goes 0.639 → 0.988.
 
-**These numbers are from checkpoint 100 of 425** — v2 is only 23% trained and already beats the base model by 50% relative. The final checkpoint should be better.
+### How much real data does it take?
+
+Effective batch is 32, so each step is 32 examples. Evaluated on the same held-out ELMTEX set:
+
+| v2 checkpoint | real examples seen | micro | macro | schema validity | omitted/note |
+|---|---:|---:|---:|---:|---:|
+| base, no fine-tune | 0 | 0.445 | 0.434 | 0.649 | 5.56 |
+| step 100 | 3,200 | 0.666 | 0.639 | 0.992 | 3.47 |
+| step 200 | 6,400 | 0.703 | 0.678 | 0.998 | 3.04 |
+
+**3,200 real examples are enough to beat the un-finetuned base model by 50% relative**, and the curve is still climbing at 6,400. For comparison, v1 consumed 17,696 synthetic examples to land at 0.208 — well below the base model it started from. The bottleneck was never the amount of data.
+
+**Numbers above are from checkpoints 100 and 200 of 425** — v2 is only 23% trained and already beats the base model by 50% relative. The final checkpoint should be better.
 
 Trained on ELMTEX, only conditions/medications/procedures are supervised, since ELMTEX annotates neither vitals nor allergies. A production system would want both corpora — the synthetic one teaches the LOINC vitals coding that the demo shows the base model getting badly wrong, and the real one teaches the model to handle real prose and to stop.
 
