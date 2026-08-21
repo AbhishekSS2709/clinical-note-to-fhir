@@ -78,3 +78,65 @@ Every item below is an assumption, not a verified fact. Check them before a long
 Mitigation: `_verify_masking()` runs automatically before training and raises if the instruction
 text leaks into the unmasked span — so assumptions 1-4 fail LOUDLY at step 0 rather than silently
 producing a badly-trained model. That assertion has never executed on a GPU.
+
+
+---
+
+# Status update — 2026-08-21 (after the full GPU run)
+
+## Closed by execution
+
+| # | Finding | How it was closed |
+|---|---|---|
+| I6 | `make data` had no `synthea`/`generate` targets, so the documented reproduce path failed | Makefile rewritten with the full order: `synthea -> generate -> data -> train -> serve-ab -> eval`, plus `elmtex` and `benchmark` |
+| I7 | `outputs/serving_benchmark.json` cited but never produced | `scripts/benchmark_serving.py` added; measured 326 prompt tokens/note vs 8,100 for few-shot, $83.64 vs $191.57 per 1M notes |
+| I9 | Unbounded pins across known API renames | `trl` 1.10 renamed `SFTConfig.max_seq_length` to `max_length` and it DID fire. `resolve_max_length_kwarg` emits whichever the installed version accepts, and `unsupported_kwargs` pre-flights the whole training block against the signature before the model loads |
+| M5 | `report_to="wandb"` unconditional | Config-driven, default `none`. wandb was not installed on the server, so this raised at startup rather than hanging — either way it blocked the first launch |
+
+**The completion-only masking assertion has now executed on a GPU.** It was the
+highest-risk unverified assumption (#4: Qwen3's real chat template vs our
+marker-patching, tested only against a hand-written approximation). It passed on
+both corpora:
+
+```
+[verify_masking] 693/809 label tokens masked   (synthetic)
+[verify_masking] 1015/1776 label tokens masked (ELMTEX)
+```
+
+That output also revealed a bug it was not looking for: the supervised span
+begins `<think>
+
+</think>`, because Qwen3's template emits the think tags
+inside the assistant turn. `parse_record` handled neither, so every fine-tuned
+prediction would have failed to parse and scored 0.0 — a working model reported
+as a failed experiment. Fixed with a reasoning-block stripper.
+
+**The Synthea parser has now been run against genuine output**: 180,093 real
+encounters parsed, 28,600 pairs generated. The C6 `component[]` fix for blood
+pressure held up on real bundles.
+
+## Still open
+
+| # | Finding | Status |
+|---|---|---|
+| I4 | `_number_anchored` matches the literal numeral, so the unit-conversion generation axis is systematically filtered out | Open. Fails closed (drops pairs), so it inflates the drop rate rather than poisoning labels |
+| I8 | `synthea.py` hard-codes `dosage=Dosage()`, so every medication label has null dose/unit/route | Open — and now known to matter: it is exactly why ELMTEX medication scoring is incomparable, since ELMTEX concatenates dose into the name |
+| M1 | "field-level F1" is really *name*-level F1 | Open. The README says name-level for ELMTEX but the synthetic tables should say so too |
+| M2 | Vitals matching key omits the unit | Open |
+| M3 | `hallucination_rate` / `omission_rate` divide facts by rows, so they can exceed 1.0 | Open. The README reports them as "facts/note", which is what they are, but the key names still say `_rate` |
+| M4 | `serve.py` resolves paths against CWD at import | Open |
+| M6 | `baselines.py` temperature regex matches a bare `T`; units hard-coded | Open. Affects the regex baseline only |
+
+## New, found during the run
+
+- **Result filenames collided.** Every eval wrote `{system}_{shots}shot_{split}`,
+  so the fine-tuned run silently overwrote the base baseline mid-run. `result_tag`
+  now includes the model and the constrained/schema-hint flags. Any axis that
+  changes the number changes the filename.
+- **The zero-shot baseline was a strawman.** `EXTRACT_INSTRUCTION` names the five
+  keys but never describes the field structure, so the base model invented its own
+  shape and scored 0.000. Baselines now receive the schema rendered from the
+  Pydantic model.
+- **The fine-tuned model degenerates into unbounded repetition on real reports.**
+  Not a truncation artifact — 4096 tokens changes nothing. See
+  `elmtex-evaluation.md`.
