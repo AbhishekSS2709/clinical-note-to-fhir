@@ -4,11 +4,11 @@ Extracts structured FHIR R4 clinical records (conditions, medications, allergies
 
 Training data is manufactured by **reverse generation**: Synthea emits valid FHIR bundles, an LLM writes clinical notes from them, and the bundle subset *is* the label — correct by construction, with no human annotation and no teacher model to inherit errors from.
 
-**The headline result is a negative one, and it is the point of the project:** the fine-tuned model reaches **micro-F1 0.996** on its synthetic test split and **0.209** on real clinical reports — *below* the un-finetuned base model's 0.445. Section [Where it fails](#where-it-fails-and-why) explains why, with the diagnostic evidence.
+**The headline result is a negative one, and it is the point of the project:** the fine-tuned model reaches **micro-F1 0.996** on its synthetic test split and **0.208** on real clinical reports — *below* the un-finetuned base model's 0.445. Section [Where it fails](#where-it-fails-and-why) explains why, with the diagnostic evidence.
 
 ## Results
 
-Every number is read from `outputs/eval/*.json`; none is typed by hand. All systems share one vLLM endpoint, so sampling, parser and server settings are identical across rows.
+Every number below is rendered from `outputs/eval/*.json` by `python scripts/results_table.py` — none is typed by hand, and the script regenerates these tables (plus per-resource breakdowns) so any drift between the README and the result files is visible. All systems share one vLLM endpoint, so sampling, parser and server settings are identical across rows.
 
 ### In-distribution — synthetic test split (n=517)
 
@@ -41,8 +41,8 @@ Scored on `conditions,procedures` only. See [docs/decisions/elmtex-evaluation.md
 |---|---:|---:|---:|---:|
 | **Qwen3-8B 0-shot (base)** | **0.445** | **0.434** | 0.649 | 5.56 |
 | Qwen3-8B 5-shot | 0.379 | 0.382 | 0.848 | 6.76 |
-| Qwen3-8B + LoRA bf16 | 0.209 | 0.173 | 0.639 | 8.45 |
-| Qwen3-8B + QLoRA 4-bit | 0.199 | 0.179 | 0.591 | 8.53 |
+| Qwen3-8B + LoRA bf16 | 0.208 | 0.173 | 0.639 | 8.45 |
+| Qwen3-8B + QLoRA 4-bit | 0.199 | 0.178 | 0.591 | 8.53 |
 
 ## Where it fails, and why
 
@@ -78,7 +78,7 @@ Both runs are identical except precision — same effective batch (32), learning
 | eval loss @200 / @400 / @553 | 0.0056 / 0.0049 / **0.0048** | 0.0057 / 0.0050 / 0.0050 |
 | synthetic micro-F1 | **0.996** | 0.992 |
 | allergy-slice micro-F1 | **0.993** | 0.989 |
-| ELMTEX micro-F1 | 0.209 | 0.199 |
+| ELMTEX micro-F1 | 0.208 | 0.199 |
 
 bf16 wins consistently but by ~0.004 F1 — negligible. More usefully: **precision choice does not affect the generalization failure at all.** Both overfit the generator identically.
 
