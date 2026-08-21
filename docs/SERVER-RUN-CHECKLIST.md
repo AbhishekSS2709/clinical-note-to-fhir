@@ -1,5 +1,21 @@
 ## Consolidated BLOCKED-ON-HARDWARE checklist
 
+> **STATUS 2026-08-21 — this checklist has been executed end to end.**
+> It is kept as the record of what was blocked and in what order, not as
+> outstanding work. Outcomes, including the ones that contradict what the
+> checklist assumed:
+>
+> | step | outcome |
+> |---|---|
+> | 1. Synthea parser vs real output | **Done.** 180,093 real encounters parsed; the `component[]` blood-pressure fix held. |
+> | 2. Note generation | **Done.** 28,600 pairs. The generator is `Qwen/Qwen3-8B`, not `Qwen3-14B-AWQ` as written below. |
+> | 3. Baselines | **Done**, but the `Qwen3-32B` row was dropped — that model id does not exist. The zero-shot command below is also unfair as written: it omits the schema, which made the baseline a strawman scoring 0.000. See `decisions/elmtex-evaluation.md`. |
+> | 4. Fine-tune + masking assertion | **Done.** The assertion executed on GPU and passed on both corpora. |
+> | 5. Merge before serving | **Not required.** vLLM loads PEFT adapters via `--enable-lora`, which is what allows base and tuned to share one endpoint. |
+>
+> The results are in the [README](../README.md); the evaluation caveats are in
+> [`decisions/elmtex-evaluation.md`](decisions/elmtex-evaluation.md).
+
 Everything below still needs to run on the GPU+Java-equipped server, **in this order**.
 Items from earlier tasks (3, 6, 10) are included because Task 11 Step 7 and the README's
 results table both depend on their output — this is the single order to execute
