@@ -17,6 +17,13 @@ app = typer.Typer()
 
 # Display order and labels. Anything not listed still prints, after these.
 ORDER = ["regex", "base-0", "base-0-constr", "base-5", "ft-bf16", "ft-qlora", "ft-elmtex"]
+def label_for(key: str) -> str:
+    """Human label, including per-checkpoint labels for the v2 curve."""
+    if key.startswith("ft-elmtex-"):
+        return f"Qwen3-8B + LoRA on real reports (v2, step {key.rsplit('-', 1)[-1]})"
+    return LABELS.get(key, key)
+
+
 LABELS = {
     "regex": "Regex baseline",
     "base-0": "Qwen3-8B 0-shot (schema in prompt)",
@@ -36,9 +43,12 @@ def classify(result: dict) -> str:
     if "qlora" in model:
         return "ft-qlora"
     # "fhir-v2" is the served name for the ELMTEX-trained adapter; without it
-    # this fell through to the base-model row and overwrote it.
+    # this fell through to the base-model row and overwrote it. The trailing
+    # checkpoint number must survive too, or the whole data-efficiency curve
+    # collapses onto a single row.
     if "elmtex" in model or "v2" in model:
-        return "ft-elmtex"
+        step = model.rsplit("-", 1)[-1]
+        return f"ft-elmtex-{step}" if step.isdigit() else "ft-elmtex"
     if "fhir-lora" in model:
         return "ft-bf16"
     key = f"base-{result['shots']}"
@@ -71,7 +81,7 @@ def main(eval_dir: str = "outputs/eval", split: str = "") -> None:
         keys += [k for k in by_key if k not in ORDER]
         for key in keys:
             r = by_key[key]
-            typer.echo(f"| {LABELS.get(key, key)} | {r['micro_f1']:.3f} | "
+            typer.echo(f"| {label_for(key)} | {r['micro_f1']:.3f} | "
                        f"{r['macro_f1']:.3f} | {r['schema_validity']:.3f} | "
                        f"{r['hallucination_rate']:.3f} | {r['omission_rate']:.2f} |")
 
@@ -81,7 +91,7 @@ def main(eval_dir: str = "outputs/eval", split: str = "") -> None:
         typer.echo("|---" * (len(types) + 1) + "|")
         for key in keys:
             pr = by_key[key]["per_resource"]
-            typer.echo(f"| {LABELS.get(key, key)} | "
+            typer.echo(f"| {label_for(key)} | "
                        + " | ".join(f"{pr[t]:.3f}" for t in types) + " |")
 
 

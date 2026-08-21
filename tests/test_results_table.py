@@ -38,3 +38,12 @@ def test_classify_recognises_the_v2_adapter():
     base = {"system": "llm", "model": "qwen3-8b-base", "shots": 0}
     assert classify(v2) != classify(base)
     assert classify(v2) == "ft-elmtex"
+
+
+def test_classify_separates_v2_checkpoints():
+    # All four v2 checkpoints mapped to one key, so a table containing the
+    # data-efficiency curve kept only the last row -- the same collision as
+    # the result filenames, third occurrence.
+    keys = {classify({"system": "llm", "model": m, "shots": 0})
+            for m in ("fhir-v2-100", "fhir-v2-200", "fhir-v2-300", "fhir-v2-425")}
+    assert len(keys) == 4

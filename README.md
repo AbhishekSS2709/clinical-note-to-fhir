@@ -4,7 +4,7 @@ Extracts structured FHIR R4 clinical records (conditions, medications, allergies
 
 Training data is manufactured by **reverse generation**: Synthea emits valid FHIR bundles, an LLM writes clinical notes from them, and the bundle subset *is* the label — correct by construction, with no human annotation and no teacher model to inherit errors from.
 
-**The interesting result is the failure and the fix.** Trained on synthetic notes, the model reaches **micro-F1 0.996** on its synthetic test split and **0.208** on real clinical reports — *below* the un-finetuned base model's 0.445, degenerating into unbounded repetition. Retrained on real reports (v2), the same recipe reaches **0.666**, beating the base model by 50% relative. [Where it fails](#where-it-fails-and-why) has the diagnosis; [v2](#v2-the-fix) has the fix.
+**The interesting result is the failure and the fix.** Trained on synthetic notes, the model reaches **micro-F1 0.996** on its synthetic test split and **0.208** on real clinical reports — *below* the un-finetuned base model's 0.445, degenerating into unbounded repetition. Retrained on real reports (v2), the same recipe reaches **0.706**, beating the base model by 59% relative. [Where it fails](#where-it-fails-and-why) has the diagnosis; [v2](#v2-the-fix) has the fix.
 
 ## Results
 
@@ -43,7 +43,7 @@ Scored on `conditions,procedures` only. See [docs/decisions/elmtex-evaluation.md
 | Qwen3-8B 5-shot | 0.379 | 0.382 | 0.848 | 6.76 |
 | Qwen3-8B + LoRA bf16 | 0.208 | 0.173 | 0.639 | 8.45 |
 | Qwen3-8B + QLoRA 4-bit | 0.199 | 0.178 | 0.591 | 8.53 |
-| **Qwen3-8B + LoRA on real reports (v2)** | **0.666** | **0.638** | **0.988** | **3.47** |
+| **Qwen3-8B + LoRA on real reports (v2)** | **0.706** | **0.684** | **1.000** | **2.88** |
 
 ## Where it fails, and why
 
@@ -191,9 +191,9 @@ The diagnosis predicted a fix, so it was tested. v2 is the same recipe — same 
 |---|---:|---:|---:|---:|
 | v1 (synthetic training) | 0.208 | 0.173 | 0.639 | 8.45 |
 | base 0-shot, no fine-tune | 0.445 | 0.434 | 0.649 | 5.56 |
-| **v2 (real training)** | **0.666** | **0.638** | **0.988** | **3.47** |
+| **v2 (real training)** | **0.706** | **0.684** | **1.000** | **2.88** |
 
-The repetition loop is gone entirely — 16/16 reports terminate, at a median of 412 tokens, *more* concise than the base model's 623. Schema validity goes 0.639 → 0.988.
+The repetition loop is gone entirely — 16/16 reports terminate, at a median of 412 tokens, *more* concise than the base model's 623. Schema validity reaches **1.000**: every one of 599 predictions parsed and validated.
 
 ### How much real data does it take?
 
@@ -204,10 +204,12 @@ Effective batch is 32, so each step is 32 examples. Evaluated on the same held-o
 | base, no fine-tune | 0 | 0.445 | 0.434 | 0.649 | 5.56 |
 | step 100 | 3,200 | 0.666 | 0.639 | 0.992 | 3.47 |
 | step 200 | 6,400 | 0.703 | 0.678 | 0.998 | 3.04 |
+| step 300 | 9,600 | 0.708 | 0.686 | 1.000 | 3.00 |
+| step 425 (full epoch) | 13,600 | 0.706 | 0.684 | 1.000 | 2.88 |
 
-**3,200 real examples are enough to beat the un-finetuned base model by 50% relative**, and the curve is still climbing at 6,400. For comparison, v1 consumed 17,696 synthetic examples to land at 0.208 — well below the base model it started from. The bottleneck was never the amount of data.
+**3,200 real examples are enough to beat the un-finetuned base model by 50% relative, and the curve saturates by 9,600.** The full epoch (13,600) scores 0.002 *below* step 300 — noise, not improvement. The last third of the run bought nothing.
 
-**Numbers above are from checkpoints 100 and 200 of 425** — v2 is only 23% trained and already beats the base model by 50% relative. The final checkpoint should be better.
+For comparison, v1 consumed 17,696 synthetic examples to land at 0.208, below the base model it started from. **The bottleneck was never the amount of data; it was what the data was.**
 
 Trained on ELMTEX, only conditions/medications/procedures are supervised, since ELMTEX annotates neither vitals nor allergies. A production system would want both corpora — the synthetic one teaches the LOINC vitals coding that the demo shows the base model getting badly wrong, and the real one teaches the model to handle real prose and to stop.
 
