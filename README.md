@@ -86,7 +86,19 @@ bf16 wins consistently but by ~0.004 F1 — negligible. More usefully: **precisi
 
 ## Why fine-tuning, not RAG
 
-This task needs a **fixed output schema** and **cheap, high-volume inference** — retrieval solves neither. RAG earns its keep when an answer depends on fresh or per-query external knowledge; extracting the same five FHIR resource types from a self-contained note is a closed, schema-constrained transformation, not a knowledge-lookup problem. Fine-tuning bakes the schema into the weights: the fine-tuned model needs **~434 prompt tokens** where 5-shot needs **8,719**, because it carries neither exemplars nor a schema block.
+This task needs a **fixed output schema** and **cheap, high-volume inference** — retrieval solves neither. RAG earns its keep when an answer depends on fresh or per-query external knowledge; extracting the same five FHIR resource types from a self-contained note is a closed, schema-constrained transformation, not a knowledge-lookup problem. Fine-tuning bakes the schema into the weights: the fine-tuned model spends **326 prompt tokens per note** where 5-shot spends **8,100**, because it carries neither exemplars nor a schema block. That is the whole serving argument, and it is measured below.
+
+### Serving cost (one A6000, vLLM, `outputs/serving_benchmark.json`)
+
+| System | Notes/sec @32 | p95 latency | Prompt tokens/note | $/1M notes |
+|---|---:|---:|---:|---:|
+| **Fine-tuned 0-shot** | **2.66** | **14.4 s** | **326** | **$83.64** |
+| Base 0-shot + schema | 2.03 | 21.2 s | 1,078 | $109.25 |
+| Base 5-shot | 1.16 | 39.4 s | 8,100 | $191.57 |
+
+2.3x the throughput of few-shot at 2.3x lower cost with a 2.7x faster tail. Cost assumes $0.80/GPU-hour and scales linearly — substitute your own rate.
+
+This advantage is real but applies **in-distribution only**; on real reports the fine-tuned model is both slower to terminate and less accurate.
 
 ## How the data was built
 
