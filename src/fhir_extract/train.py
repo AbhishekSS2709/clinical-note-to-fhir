@@ -332,7 +332,9 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
     from trl import SFTConfig, SFTTrainer
 
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
-    proc = Path("data/processed")
+    # Configurable so a run can train from a different corpus (the ELMTEX
+    # real-report fine-tune reads data/processed_elmtex) without editing code.
+    proc = Path(cfg.get("data_dir", "data/processed"))
 
     tokenizer = AutoTokenizer.from_pretrained(cfg["model_id"])
     if tokenizer.pad_token is None:

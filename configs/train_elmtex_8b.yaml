@@ -1,0 +1,73 @@
+# bf16 LoRA fine-tune on ELMTEX real clinical reports (v2).
+#
+# Sizing confirmed 2026-08-18 by nvidia-smi on senaicluster:
+#   4x NVIDIA RTX A6000, 49140 MiB (48GB) each, driver 565.57.01, CUDA 12.7
+#   GPU 1 had 44.2GB free and idle -> pin CUDA_VISIBLE_DEVICES=1
+#
+# The box is SHARED (GPU 3 was at 100% under another user's job, and the
+# vLLM endpoint sits on GPU 0). Always pin the device; never let torch
+# default to GPU 0 and contend with the inference server.
+#
+# Why bf16 rather than 4-bit: an 8B model is ~16GB in bf16, plus LoRA
+# optimizer state and checkpointed activations at 2048 tokens -- roughly
+# 25-30GB, comfortable in 44GB. Published clinical-extraction results put
+# bf16 LoRA ~2-4 F1 above QLoRA and ~30% faster
+# (medRxiv 2025.10.21.25338506). Run configs/train_qlora_8b.yaml as the
+# ablation to measure that delta on THIS task rather than assuming it.
+model_id: Qwen/Qwen3-8B
+output_dir: outputs/adapters/elmtex-bf16-8b
+
+# v2: train on REAL clinical reports instead of Synthea-derived synthetic
+# notes. v1 scored micro 0.996 on its synthetic test split but 0.209 on
+# ELMTEX, below the un-finetuned base model's 0.445, and degenerated into
+# unbounded repetition on 10 of 16 real reports. See
+# docs/decisions/elmtex-evaluation.md.
+#
+# Only conditions/medications/procedures are supervised here -- ELMTEX
+# annotates no vitals or allergies. Evaluate with
+# --resources conditions,procedures.
+data_dir: data/processed_elmtex
+seed: 42
+
+# Decode one training batch's labels and assert the instruction is masked
+# (-100) while the JSON answer is not, before training starts. Verified
+# working on the real Qwen3 tokenizer: 34/56 tokens supervised, assistant
+# header masked out. Disable only if this ever misfires.
+verify_masking: true
+
+# No `quantization:` block -- absent means load the base model in bf16 and
+# skip bitsandbytes entirely. See train.py's model-loading branch.
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  # All linear layers, not attention-only. Attention-only LoRA consistently
+  # underperforms on structured-output tasks; most tutorials get this wrong.
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+training:
+  learning_rate: 2.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03          # transformers 5.x removed this key; train.py
+                              # converts it to warmup_steps automatically
+  # 1, not 3. Measured on the A6000: 31 s/optimizer-step at effective batch
+  # 32, so 3 epochs over 17,696 examples is 1,659 steps ~ 14 hours. One epoch
+  # is 553 steps ~ 4.8h, which fits the available window, and 17.7k examples
+  # is comfortably enough for a single-epoch LoRA SFT run. Raise it only with
+  # the wall-clock to spare.
+  num_train_epochs: 1
+  max_seq_length: 2048
+  # 48GB allows a real per-device batch. Effective batch stays 32 to match
+  # the QLoRA ablation, so the two runs differ ONLY in precision.
+  per_device_train_batch_size: 8
+  gradient_accumulation_steps: 4
+  gradient_checkpointing: true
+  optim: adamw_torch          # paged_adamw_8bit exists to save VRAM under
+                              # 4-bit; unnecessary here and slightly worse
+  bf16: true
+  report_to: none        # set to wandb only where it is installed
+  save_steps: 100
+  logging_steps: 10
+  eval_strategy: steps
+  eval_steps: 200
