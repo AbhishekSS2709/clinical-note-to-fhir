@@ -51,3 +51,29 @@ def test_medical_surgical_history_is_excluded_as_ambiguous():
 
 def test_to_record_tolerates_missing_fields():
     assert to_record({}).conditions == []
+
+
+# --- train/val split for the ELMTEX fine-tune -----------------------------
+
+from fhir_extract.elmtex import split_rows
+
+
+def _rows(n=40):
+    return [{"patient_id": f"p{i // 2}", "note": f"n{i}", "label": {}} for i in range(n)]
+
+
+def test_split_rows_keeps_a_patient_in_one_side_only():
+    tr, va = split_rows(_rows(), val_rows=6, seed=1)
+    assert {r["patient_id"] for r in tr} & {r["patient_id"] for r in va} == set()
+
+
+def test_split_rows_reaches_the_requested_validation_size():
+    tr, va = split_rows(_rows(), val_rows=6, seed=1)
+    assert len(va) >= 6
+    assert len(tr) + len(va) == 40
+
+
+def test_split_rows_is_deterministic():
+    a, _ = split_rows(_rows(), val_rows=6, seed=3)
+    b, _ = split_rows(_rows(), val_rows=6, seed=3)
+    assert [r["note"] for r in a] == [r["note"] for r in b]

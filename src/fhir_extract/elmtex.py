@@ -71,30 +71,75 @@ def to_record(summary: dict) -> ClinicalRecord:
                           procedures=procedures)
 
 
+def split_rows(rows: list[dict], val_rows: int,
+               seed: int) -> tuple[list[dict], list[dict]]:
+    """Patient-level train/val split.
+
+    ELMTEX groups several reports under one `patient_uid`, so splitting by row
+    would leak a patient's phrasing across the boundary exactly as it would on
+    the synthetic corpus.
+    """
+    import random
+    from collections import defaultdict
+
+    by_patient: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_patient[r["patient_id"]].append(r)
+    patients = sorted(by_patient)
+    random.Random(seed).shuffle(patients)
+
+    val: list[dict] = []
+    held: set[str] = set()
+    for patient in patients:
+        if len(val) >= val_rows:
+            break
+        held.add(patient)
+        val.extend(by_patient[patient])
+    train = [r for r in rows if r["patient_id"] not in held]
+    return train, val
+
+
 @app.command()
-def main(source: str, out: str, limit: int = 0) -> None:
-    """Write ELMTEX records as note/label JSONL matching our splits."""
+def main(source: str, out: str = "", limit: int = 0,
+         train_out: str = "", val_out: str = "", val_rows: int = 400,
+         seed: int = 42) -> None:
+    """Write ELMTEX records as note/label JSONL matching our splits.
+
+    With --train-out/--val-out, emits a patient-disjoint train/val pair for
+    fine-tuning on real reports instead of a single evaluation file.
+    """
     records = json.loads(Path(source).read_text(encoding="utf-8"))
     if limit:
         records = records[:limit]
-    out_path = Path(out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    kept = 0
-    with out_path.open("w", encoding="utf-8") as fh:
-        for rec in records:
-            label = to_record(rec.get("summary") or {})
-            # A report with no fact in any covered type cannot discriminate
-            # between systems; it only adds precision-only rows.
-            if not (label.conditions or label.medications or label.procedures):
-                continue
-            fh.write(json.dumps({
-                "patient_id": str(rec.get("patient_uid") or rec.get("patient_id")),
-                "encounter_id": str(rec.get("PMID")),
-                "note": rec["report"],
-                "label": label.model_dump(),
-            }) + "\n")
-            kept += 1
-    typer.echo(f"wrote {kept}/{len(records)} records to {out_path}")
+    rows = []
+    for rec in records:
+        label = to_record(rec.get("summary") or {})
+        # A report with no fact in any covered type cannot discriminate
+        # between systems; it only adds precision-only rows.
+        if not (label.conditions or label.medications or label.procedures):
+            continue
+        rows.append({
+            "patient_id": str(rec.get("patient_uid") or rec.get("patient_id")),
+            "encounter_id": str(rec.get("PMID")),
+            "note": rec["report"],
+            "label": label.model_dump(),
+        })
+
+    def dump(path: str, subset: list[dict]) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", encoding="utf-8") as fh:
+            for r in subset:
+                fh.write(json.dumps(r) + "\n")
+        typer.echo(f"wrote {len(subset)} rows to {target}")
+
+    if train_out:
+        train, val = split_rows(rows, val_rows, seed)
+        dump(train_out, train)
+        dump(val_out or str(Path(train_out).with_name("val.jsonl")), val)
+    else:
+        dump(out, rows)
+    typer.echo(f"kept {len(rows)}/{len(records)} records")
 
 
 if __name__ == "__main__":
