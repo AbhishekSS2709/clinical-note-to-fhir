@@ -1,5 +1,6 @@
 """Count how many ELMTEX categories map onto our five FHIR resource types."""
-import json, sys
+import json
+import sys
 from collections import Counter
 from pathlib import Path
 

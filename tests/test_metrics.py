@@ -1,6 +1,6 @@
 import pytest
 
-from fhir_extract.profile import ClinicalRecord, Condition, MedicationStatement, Procedure
+from fhir_extract.profile import ClinicalRecord, Condition, Procedure
 from fhir_extract.metrics import score, aggregate
 
 def _rec(*conditions):
@@ -118,7 +118,7 @@ def test_unparsed_prediction_is_never_schema_valid():
 # --- restricting which resource types are scored --------------------------
 
 def test_score_can_restrict_to_a_subset_of_resources():
-    from fhir_extract.metrics import score, RESOURCES
+    from fhir_extract.metrics import score
     from fhir_extract.profile import ClinicalRecord, Condition, VitalObservation
     pred = ClinicalRecord(
         conditions=[Condition(code_text="asthma", clinical_status="active")],

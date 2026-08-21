@@ -42,7 +42,6 @@ def test_subset_drops_something_from_a_large_record():
 
 
 def test_subset_is_never_empty():
-    rng = random.Random(0)
     for seed in range(50):
         sub = select_subset(_enc(_full()), random.Random(seed))
         total = (len(sub.conditions) + len(sub.medications) + len(sub.allergies)

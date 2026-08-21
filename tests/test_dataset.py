@@ -1,4 +1,5 @@
 from fhir_extract.dataset import split_by_patient, distinct_n
+from fhir_extract.dataset import reserve_allergy_slice
 
 def _rows():
     return [{"patient_id": f"p{i // 5}", "note": f"note {i}", "label": {}}
@@ -43,7 +44,6 @@ def test_no_patient_leaks_after_fill_order_change():
             assert seen.setdefault(r["patient_id"], name) == name
 
 
-from fhir_extract.dataset import reserve_allergy_slice
 
 
 def _allergy_rows():

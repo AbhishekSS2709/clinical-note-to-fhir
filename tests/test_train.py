@@ -9,7 +9,10 @@ import pytest
 from fhir_extract.train import (
     ensure_generation_markers,
     resolve_dtype_kwarg,
+    resolve_max_length_kwarg,
     resolve_warmup_kwargs,
+    total_training_steps,
+    unsupported_kwargs,
 )
 
 
@@ -132,7 +135,6 @@ def test_resolve_warmup_kwargs_validates_against_target_signature():
 
 # --- total step count (drives warmup_ratio -> warmup_steps conversion) ----
 
-from fhir_extract.train import total_training_steps
 
 
 def test_total_training_steps_multiplies_epochs_by_batches():
@@ -168,7 +170,6 @@ def test_warmup_ratio_converts_once_total_steps_is_supplied():
 
 # --- SFTConfig key compatibility -----------------------------------------
 
-from fhir_extract.train import resolve_max_length_kwarg, unsupported_kwargs
 
 
 def _sft_like(*, max_length=0, learning_rate=0.0, warmup_steps=0):

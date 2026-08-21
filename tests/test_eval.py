@@ -191,7 +191,6 @@ def test_few_shot_eval_requires_train_jsonl(tmp_path, monkeypatch):
 
 # --- result filenames must not collide across systems --------------------
 
-from fhir_extract.eval import result_tag
 
 
 def test_tag_separates_models_evaluated_on_the_same_split():

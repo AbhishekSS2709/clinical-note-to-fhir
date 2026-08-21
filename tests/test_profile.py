@@ -1,8 +1,7 @@
 import pytest
 from fhir_extract.profile import (
     ClinicalRecord, Condition, MedicationStatement, Dosage,
-    AllergyIntolerance, VitalObservation, Procedure,
-    validate_as_fhir, VITAL_LOINC, CLINICAL_STATUSES,
+    VitalObservation, validate_as_fhir, VITAL_LOINC, CLINICAL_STATUSES,
 )
 
 

@@ -1,6 +1,6 @@
-import pytest
 
 from fhir_extract.elmtex import ELMTEX_FIELDS, split_entries, to_record
+from fhir_extract.elmtex import split_rows
 
 
 def test_split_entries_splits_on_semicolons():
@@ -55,7 +55,6 @@ def test_to_record_tolerates_missing_fields():
 
 # --- train/val split for the ELMTEX fine-tune -----------------------------
 
-from fhir_extract.elmtex import split_rows
 
 
 def _rows(n=40):

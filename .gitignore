@@ -13,3 +13,4 @@ wandb/
 synthea/
 .env
 data/raw/elmtex/
+fhir-extract.bundle

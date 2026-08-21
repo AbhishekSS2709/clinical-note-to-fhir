@@ -342,7 +342,8 @@ def main(config: str = "configs/train_qlora_8b.yaml", resume: bool = True) -> No
     ensure_generation_markers(tokenizer)
 
     def load(name: str) -> Dataset:
-        rows = [json.loads(l) for l in (proc / f"{name}.jsonl").open(encoding="utf-8")]
+        rows = [json.loads(line)
+                for line in (proc / f"{name}.jsonl").open(encoding="utf-8")]
         return Dataset.from_list([_format(r) for r in rows])
 
     train_ds, val_ds = load("train"), load("val")

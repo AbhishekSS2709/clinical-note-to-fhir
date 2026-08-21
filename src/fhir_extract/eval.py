@@ -110,7 +110,8 @@ def main(
     results["scored_resources"] = list(scored)
     results["split"] = split
 
-    out = Path("outputs/eval"); out.mkdir(parents=True, exist_ok=True)
+    out = Path("outputs/eval")
+    out.mkdir(parents=True, exist_ok=True)
     tag = result_tag(system, resolved_model, shots, constrained, schema_hint, split)
     (out / f"{tag}.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     typer.echo(json.dumps(results, indent=2))
