@@ -69,6 +69,26 @@ Synthea's verbose RxNorm display names, SNOMED `(finding)` tags, every optional 
 
 **This is the argument for external validation.** In-distribution, every metric said the project was a success.
 
+## What the demo shows
+
+`make serve` renders both models side by side. One hand-written note reproduces the entire finding:
+
+> 58-year-old man with type 2 diabetes mellitus and hypertension. BP 148/92 mmHg, HR 88. Continues metformin 500 mg twice daily. Allergic to penicillin. ECG performed today.
+
+| | fine-tuned | base |
+|---|---|---|
+| conditions | `[]` — **missed both** | `Type 2 diabetes mellitus`, `Hypertension` |
+| medications | `Metformin 500 MG Oral Tablet` | `metformin` |
+| allergies | `Penicillin (substance)` | `penicillin` |
+| vitals | `8480-6=148` systolic, `8462-4=92` diastolic, `8867-4=88` | `8302-2=148` **body height**, `8310-5=148` **temperature**, `8462-4=92`, `8867-4=88` |
+| procedures | `ECG (procedure)` | `ECG` |
+
+The fine-tune assigns correct LOINC codes; the base model codes a blood pressure of 148 as body height *and* body temperature. That is the value fine-tuning adds, and no prompt engineering produced it.
+
+On the same note the fine-tune drops both diagnoses. The note is ordinary prose rather than Synthea-shaped text, so it is off-distribution — and conditions collapse exactly as the ELMTEX numbers predict.
+
+Both panes are prompted fairly: the tuned model gets the prompt it was trained on, the base model additionally gets the schema, since it has never seen the field structure.
+
 ## The LoRA vs QLoRA ablation
 
 Both runs are identical except precision — same effective batch (32), learning rate (2e-4), rank (16), target modules, epoch count and data.
