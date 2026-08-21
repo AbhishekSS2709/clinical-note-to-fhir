@@ -4,7 +4,7 @@ Extracts structured FHIR R4 clinical records (conditions, medications, allergies
 
 Training data is manufactured by **reverse generation**: Synthea emits valid FHIR bundles, an LLM writes clinical notes from them, and the bundle subset *is* the label — correct by construction, with no human annotation and no teacher model to inherit errors from.
 
-**The headline result is a negative one, and it is the point of the project:** the fine-tuned model reaches **micro-F1 0.996** on its synthetic test split and **0.208** on real clinical reports — *below* the un-finetuned base model's 0.445. Section [Where it fails](#where-it-fails-and-why) explains why, with the diagnostic evidence.
+**The interesting result is the failure and the fix.** Trained on synthetic notes, the model reaches **micro-F1 0.996** on its synthetic test split and **0.208** on real clinical reports — *below* the un-finetuned base model's 0.445, degenerating into unbounded repetition. Retrained on real reports (v2), the same recipe reaches **0.666**, beating the base model by 50% relative. [Where it fails](#where-it-fails-and-why) has the diagnosis; [v2](#v2-the-fix) has the fix.
 
 ## Results
 
@@ -43,6 +43,7 @@ Scored on `conditions,procedures` only. See [docs/decisions/elmtex-evaluation.md
 | Qwen3-8B 5-shot | 0.379 | 0.382 | 0.848 | 6.76 |
 | Qwen3-8B + LoRA bf16 | 0.208 | 0.173 | 0.639 | 8.45 |
 | Qwen3-8B + QLoRA 4-bit | 0.199 | 0.178 | 0.591 | 8.53 |
+| **Qwen3-8B + LoRA on real reports (v2)** | **0.666** | **0.638** | **0.988** | **3.47** |
 
 ## Where it fails, and why
 
@@ -54,6 +55,7 @@ The fine-tuned model does not merely score lower on real text — it **degenerat
 | base | 4096 | 0 | 15/16 | 623 |
 | fine-tuned | 2048 | **10** | 5/16 | 2048 |
 | fine-tuned | 4096 | **10** | 5/16 | 4096 |
+| **v2 (trained on real reports)** | 2048 | **0** | **16/16** | **412** |
 
 The base model terminates at a median of 623 tokens. The fine-tuned model consumes *whatever budget it is given*, repeating entries until it runs out. Doubling the budget changes nothing, and constrained decoding does not help either — the loop happens inside the JSON arrays, which the schema permits.
 
@@ -181,8 +183,24 @@ vllm serve $BASE --served-model-name qwen3-8b-base \
 
 `scripts/merge_adapter.py` remains for single-model deployment, but is not needed for evaluation.
 
-## What a v2 would change
+## v2: the fix
 
-- Train on **real** annotated notes — ELMTEX ships a 54k-example training split (CC-BY-4.0).
-- Train on denser labels; the synthetic corpus never shows a list long enough to teach termination.
-- Report external validation from the first experiment, not the last.
+The diagnosis predicted a fix, so it was tested. v2 is the same recipe — same rank, alpha, learning rate, schedule, one epoch — trained on **13,593 real ELMTEX reports** instead of Synthea-derived synthetic notes, with the split verified patient-disjoint from the test set.
+
+| ELMTEX, conditions+procedures | micro | macro | schema validity | omitted/note |
+|---|---:|---:|---:|---:|
+| v1 (synthetic training) | 0.208 | 0.173 | 0.639 | 8.45 |
+| base 0-shot, no fine-tune | 0.445 | 0.434 | 0.649 | 5.56 |
+| **v2 (real training)** | **0.666** | **0.638** | **0.988** | **3.47** |
+
+The repetition loop is gone entirely — 16/16 reports terminate, at a median of 412 tokens, *more* concise than the base model's 623. Schema validity goes 0.639 → 0.988.
+
+**These numbers are from checkpoint 100 of 425** — v2 is only 23% trained and already beats the base model by 50% relative. The final checkpoint should be better.
+
+Trained on ELMTEX, only conditions/medications/procedures are supervised, since ELMTEX annotates neither vitals nor allergies. A production system would want both corpora — the synthetic one teaches the LOINC vitals coding that the demo shows the base model getting badly wrong, and the real one teaches the model to handle real prose and to stop.
+
+## What still limits this
+
+- **Two corpora, two conventions.** Mixing them naively would teach the model to emit empty vitals for notes that mention them. Doing it properly needs either a task marker in the prompt or a way to mark a field as "not annotated here" rather than "absent".
+- **ELMTEX labels are name-level**, so v2's numbers are name-level too.
+- **Neither corpus is EHR text.** Case reports are more narrative and more complete than a working clinical note.
