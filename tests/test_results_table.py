@@ -29,3 +29,12 @@ def test_classify_distinguishes_shot_counts():
 
 def test_classify_regex_needs_no_model():
     assert classify({"system": "regex", "model": None, "shots": 0}) == "regex"
+
+
+def test_classify_recognises_the_v2_adapter():
+    # "fhir-v2" matched none of the adapter patterns and fell through to the
+    # base-model row, silently overwriting the base result in the table.
+    v2 = {"system": "llm", "model": "fhir-v2", "shots": 0}
+    base = {"system": "llm", "model": "qwen3-8b-base", "shots": 0}
+    assert classify(v2) != classify(base)
+    assert classify(v2) == "ft-elmtex"

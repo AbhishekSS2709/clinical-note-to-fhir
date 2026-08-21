@@ -35,7 +35,9 @@ def classify(result: dict) -> str:
     model = (result.get("model") or "").lower()
     if "qlora" in model:
         return "ft-qlora"
-    if "elmtex" in model:
+    # "fhir-v2" is the served name for the ELMTEX-trained adapter; without it
+    # this fell through to the base-model row and overwrote it.
+    if "elmtex" in model or "v2" in model:
         return "ft-elmtex"
     if "fhir-lora" in model:
         return "ft-bf16"

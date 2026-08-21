@@ -39,7 +39,7 @@ Scored on `conditions,procedures` only. See [docs/decisions/elmtex-evaluation.md
 
 | System | Micro-F1 | Macro-F1 | Schema validity | Omitted facts/note |
 |---|---:|---:|---:|---:|
-| **Qwen3-8B 0-shot (base)** | **0.445** | **0.434** | 0.649 | 5.56 |
+| Qwen3-8B 0-shot (base) | 0.445 | 0.434 | 0.649 | 5.56 |
 | Qwen3-8B 5-shot | 0.379 | 0.382 | 0.848 | 6.76 |
 | Qwen3-8B + LoRA bf16 | 0.208 | 0.173 | 0.639 | 8.45 |
 | Qwen3-8B + QLoRA 4-bit | 0.199 | 0.178 | 0.591 | 8.53 |
