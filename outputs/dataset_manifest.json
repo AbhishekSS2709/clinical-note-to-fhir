@@ -1,0 +1,25 @@
+{
+  "seed": 42,
+  "generation_model": "Qwen/Qwen3-8B",
+  "raw_pairs": 28600,
+  "kept_pairs": 19123,
+  "drop_rate": 0.3314,
+  "drop_rate_missing": 0.2587,
+  "drop_rate_invented": 0.0853,
+  "split_sizes": {
+    "test_synthetic": 517,
+    "train": 17696,
+    "val": 510,
+    "test_allergies": 400
+  },
+  "distinct_2": 0.0609,
+  "distinct_3": 0.1654,
+  "rows_by_resource": {
+    "conditions": 5607,
+    "medications": 7213,
+    "allergies": 165,
+    "vitals": 17163,
+    "procedures": 3199
+  },
+  "allergy_rows_in_slice": 60
+}

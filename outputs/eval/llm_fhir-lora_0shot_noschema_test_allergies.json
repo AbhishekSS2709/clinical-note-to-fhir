@@ -1,0 +1,21 @@
+{
+  "n": 400,
+  "micro_f1": 0.9926,
+  "macro_f1": 0.9801,
+  "schema_validity": 0.9975,
+  "hallucination_rate": 0.005,
+  "omission_rate": 0.0525,
+  "per_resource": {
+    "conditions": 0.9575,
+    "medications": 0.9924,
+    "allergies": 0.9632,
+    "vitals": 0.9973,
+    "procedures": 0.9899
+  },
+  "system": "llm",
+  "model": "fhir-lora",
+  "shots": 0,
+  "constrained": false,
+  "schema_hint": false,
+  "split": "test_allergies"
+}

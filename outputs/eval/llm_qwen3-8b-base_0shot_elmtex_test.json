@@ -1,0 +1,22 @@
+{
+  "n": 599,
+  "micro_f1": 0.4446,
+  "macro_f1": 0.4344,
+  "schema_validity": 0.6494,
+  "hallucination_rate": 1.616,
+  "omission_rate": 5.5559,
+  "per_resource": {
+    "conditions": 0.3774,
+    "procedures": 0.4914
+  },
+  "system": "llm",
+  "model": "qwen3-8b-base",
+  "shots": 0,
+  "constrained": false,
+  "schema_hint": true,
+  "scored_resources": [
+    "conditions",
+    "procedures"
+  ],
+  "split": "elmtex_test"
+}

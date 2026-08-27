@@ -1,8 +1,0 @@
-pyproject.toml
-src/fhir_extract/__init__.py
-src/fhir_extract.egg-info/PKG-INFO
-src/fhir_extract.egg-info/SOURCES.txt
-src/fhir_extract.egg-info/dependency_links.txt
-src/fhir_extract.egg-info/requires.txt
-src/fhir_extract.egg-info/top_level.txt
-tests/test_smoke.py

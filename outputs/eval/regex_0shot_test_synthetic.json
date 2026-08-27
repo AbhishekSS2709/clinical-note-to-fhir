@@ -1,0 +1,21 @@
+{
+  "n": 517,
+  "micro_f1": 0.4086,
+  "macro_f1": 0.0969,
+  "schema_validity": 1.0,
+  "hallucination_rate": 0.0,
+  "omission_rate": 4.6654,
+  "per_resource": {
+    "conditions": 0.0,
+    "medications": 0.0,
+    "allergies": 0.0,
+    "vitals": 0.4846,
+    "procedures": 0.0
+  },
+  "system": "regex",
+  "model": null,
+  "shots": 0,
+  "constrained": false,
+  "schema_hint": true,
+  "split": "test_synthetic"
+}

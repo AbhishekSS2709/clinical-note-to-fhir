@@ -1,0 +1,21 @@
+{
+  "n": 517,
+  "micro_f1": 0.9957,
+  "macro_f1": 0.7858,
+  "schema_validity": 1.0,
+  "hallucination_rate": 0.0019,
+  "omission_rate": 0.029,
+  "per_resource": {
+    "conditions": 0.9697,
+    "medications": 0.994,
+    "allergies": 0.0,
+    "vitals": 0.9996,
+    "procedures": 0.9658
+  },
+  "system": "llm",
+  "model": "fhir-lora",
+  "shots": 0,
+  "constrained": false,
+  "schema_hint": false,
+  "split": "test_synthetic"
+}

@@ -1,0 +1,22 @@
+{
+  "n": 599,
+  "micro_f1": 0.6663,
+  "macro_f1": 0.6389,
+  "schema_validity": 0.9917,
+  "hallucination_rate": 1.384,
+  "omission_rate": 3.4658,
+  "per_resource": {
+    "conditions": 0.5655,
+    "procedures": 0.7123
+  },
+  "system": "llm",
+  "model": "fhir-v2-100",
+  "shots": 0,
+  "constrained": false,
+  "schema_hint": false,
+  "scored_resources": [
+    "conditions",
+    "procedures"
+  ],
+  "split": "elmtex_test"
+}

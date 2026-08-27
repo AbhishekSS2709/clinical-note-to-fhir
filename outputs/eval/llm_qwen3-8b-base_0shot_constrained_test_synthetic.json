@@ -1,0 +1,21 @@
+{
+  "n": 517,
+  "micro_f1": 0.2585,
+  "macro_f1": 0.3913,
+  "schema_validity": 0.8878,
+  "hallucination_rate": 0.1509,
+  "omission_rate": 4.6344,
+  "per_resource": {
+    "conditions": 0.4045,
+    "medications": 0.7661,
+    "allergies": 0.0,
+    "vitals": 0.1467,
+    "procedures": 0.6391
+  },
+  "system": "llm",
+  "model": "qwen3-8b-base",
+  "shots": 0,
+  "constrained": true,
+  "schema_hint": true,
+  "split": "test_synthetic"
+}

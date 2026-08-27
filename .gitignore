@@ -5,7 +5,14 @@ venv/
 data/raw/
 data/interim/
 data/processed/
-outputs/
+outputs/*
+# ...but the evaluation results are the evidence for every README table, and
+# are ~10KB total. `python scripts/results_table.py` regenerates each cell.
+!outputs/eval/
+outputs/eval/*
+!outputs/eval/*.json
+!outputs/serving_benchmark.json
+!outputs/dataset_manifest.json
 checkpoints/
 wandb/
 *.gguf
@@ -14,3 +21,4 @@ synthea/
 .env
 data/raw/elmtex/
 fhir-extract.bundle
+*.egg-info/

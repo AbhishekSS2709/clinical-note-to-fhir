@@ -1,0 +1,28 @@
+{
+  "n": 517,
+  "micro_f1": 0.9915,
+  "macro_f1": 0.7748,
+  "schema_validity": 0.9942,
+  "hallucination_rate": 0.0,
+  "omission_rate": 0.0812,
+  "per_resource": {
+    "conditions": 0.9611,
+    "medications": 0.991,
+    "allergies": 0.0,
+    "vitals": 0.9971,
+    "procedures": 0.9249
+  },
+  "system": "llm",
+  "model": "fhir-qlora",
+  "shots": 0,
+  "constrained": false,
+  "schema_hint": false,
+  "scored_resources": [
+    "conditions",
+    "medications",
+    "allergies",
+    "vitals",
+    "procedures"
+  ],
+  "split": "test_synthetic"
+}

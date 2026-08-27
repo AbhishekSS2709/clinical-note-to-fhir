@@ -1,0 +1,130 @@
+{
+  "gpu_hour_usd": 0.8,
+  "notes_sampled": 32,
+  "max_tokens": 1024,
+  "systems": {
+    "fine-tuned (0-shot)": [
+      {
+        "concurrency": 1,
+        "notes": 32,
+        "wall_seconds": 253.89,
+        "notes_per_second": 0.126,
+        "output_tokens_per_second": 37.8,
+        "total_tokens_per_second": 82.6,
+        "prompt_tokens_per_note": 355.4,
+        "output_tokens_per_note": 299.8,
+        "latency_p50_s": 7.637,
+        "latency_p95_s": 12.206,
+        "usd_per_1m_notes": 1763.67
+      },
+      {
+        "concurrency": 8,
+        "notes": 32,
+        "wall_seconds": 39.72,
+        "notes_per_second": 0.806,
+        "output_tokens_per_second": 241.6,
+        "total_tokens_per_second": 527.9,
+        "prompt_tokens_per_note": 355.4,
+        "output_tokens_per_note": 299.8,
+        "latency_p50_s": 8.583,
+        "latency_p95_s": 13.966,
+        "usd_per_1m_notes": 275.71
+      },
+      {
+        "concurrency": 32,
+        "notes": 32,
+        "wall_seconds": 19.78,
+        "notes_per_second": 1.618,
+        "output_tokens_per_second": 485.0,
+        "total_tokens_per_second": 1060.1,
+        "prompt_tokens_per_note": 355.4,
+        "output_tokens_per_note": 299.8,
+        "latency_p50_s": 9.745,
+        "latency_p95_s": 15.057,
+        "usd_per_1m_notes": 137.34
+      }
+    ],
+    "base (0-shot + schema)": [
+      {
+        "concurrency": 1,
+        "notes": 32,
+        "wall_seconds": 319.08,
+        "notes_per_second": 0.1,
+        "output_tokens_per_second": 37.8,
+        "total_tokens_per_second": 148.8,
+        "prompt_tokens_per_note": 1107.4,
+        "output_tokens_per_note": 376.7,
+        "latency_p50_s": 9.038,
+        "latency_p95_s": 16.791,
+        "usd_per_1m_notes": 2222.22
+      },
+      {
+        "concurrency": 8,
+        "notes": 32,
+        "wall_seconds": 46.52,
+        "notes_per_second": 0.688,
+        "output_tokens_per_second": 259.7,
+        "total_tokens_per_second": 1021.5,
+        "prompt_tokens_per_note": 1107.4,
+        "output_tokens_per_note": 377.6,
+        "latency_p50_s": 9.538,
+        "latency_p95_s": 18.479,
+        "usd_per_1m_notes": 323.0
+      },
+      {
+        "concurrency": 32,
+        "notes": 32,
+        "wall_seconds": 24.14,
+        "notes_per_second": 1.326,
+        "output_tokens_per_second": 496.1,
+        "total_tokens_per_second": 1964.4,
+        "prompt_tokens_per_note": 1107.4,
+        "output_tokens_per_note": 374.2,
+        "latency_p50_s": 12.979,
+        "latency_p95_s": 21.716,
+        "usd_per_1m_notes": 167.59
+      }
+    ],
+    "base (5-shot)": [
+      {
+        "concurrency": 1,
+        "notes": 32,
+        "wall_seconds": 386.52,
+        "notes_per_second": 0.083,
+        "output_tokens_per_second": 33.1,
+        "total_tokens_per_second": 706.1,
+        "prompt_tokens_per_note": 8129.4,
+        "output_tokens_per_note": 399.9,
+        "latency_p50_s": 9.198,
+        "latency_p95_s": 27.212,
+        "usd_per_1m_notes": 2677.38
+      },
+      {
+        "concurrency": 8,
+        "notes": 32,
+        "wall_seconds": 60.27,
+        "notes_per_second": 0.531,
+        "output_tokens_per_second": 212.3,
+        "total_tokens_per_second": 4528.3,
+        "prompt_tokens_per_note": 8129.4,
+        "output_tokens_per_note": 399.9,
+        "latency_p50_s": 12.374,
+        "latency_p95_s": 24.484,
+        "usd_per_1m_notes": 418.5
+      },
+      {
+        "concurrency": 32,
+        "notes": 32,
+        "wall_seconds": 33.18,
+        "notes_per_second": 0.964,
+        "output_tokens_per_second": 385.7,
+        "total_tokens_per_second": 8226.5,
+        "prompt_tokens_per_note": 8129.4,
+        "output_tokens_per_note": 399.9,
+        "latency_p50_s": 20.861,
+        "latency_p95_s": 32.023,
+        "usd_per_1m_notes": 230.52
+      }
+    ]
+  }
+}
