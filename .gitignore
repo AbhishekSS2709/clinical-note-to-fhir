@@ -22,3 +22,6 @@ synthea/
 data/raw/elmtex/
 fhir-extract.bundle
 *.egg-info/
+
+# pytest-cov
+.coverage

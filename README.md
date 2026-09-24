@@ -1,5 +1,7 @@
 # Clinical Note → FHIR
 
+[![CI](https://github.com/AbhishekSS2709/clinical-note-to-fhir/actions/workflows/ci.yml/badge.svg)](https://github.com/AbhishekSS2709/clinical-note-to-fhir/actions/workflows/ci.yml)
+
 Extracts structured FHIR R4 clinical records (conditions, medications, allergies, vitals, procedures) from free-text clinical notes, via a LoRA fine-tuned Qwen3-8B served side-by-side with its untouched base model.
 
 Training data is manufactured by **reverse generation**: Synthea emits valid FHIR bundles, an LLM writes clinical notes from them, and the bundle subset *is* the label — correct by construction, with no human annotation and no teacher model to inherit errors from.
